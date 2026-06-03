@@ -94,10 +94,9 @@ RUN curl -fsSL \
 
 # Persistent history setup
 USER root
-RUN mkdir -p /commandhistory 
+RUN mkdir -p /commandhistory  && touch /commandhistory/.zsh_history
 USER dev
-RUN touch /commandhistory/.zsh_history \
-  && echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc \
+RUN echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc \
   && echo 'export HISTFILE=/commandhistory/.zsh_history' >> ~/.zshrc \
   && echo 'zstyle ":completion:*" menu select' >> ~/.zshrc \
   && echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
