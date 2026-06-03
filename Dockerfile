@@ -93,8 +93,10 @@ RUN curl -fsSL \
   && rm /tmp/zsh-in-docker.sh
 
 # Persistent history setup
-RUN mkdir -p /commandhistory \
-  && touch /commandhistory/.zsh_history \
+USER root
+RUN mkdir -p /commandhistory 
+USER dev
+RUN touch /commandhistory/.zsh_history \
   && echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc \
   && echo 'export HISTFILE=/commandhistory/.zsh_history' >> ~/.zshrc \
   && echo 'zstyle ":completion:*" menu select' >> ~/.zshrc \
