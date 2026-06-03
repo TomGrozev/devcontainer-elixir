@@ -1,0 +1,19 @@
+{
+  "name": "Elixir Devcontainer",
+  "image": "ghcr.io/tomgrozev/devcontainer-elixir:latest",
+  "remoteUser": "dev",
+  "forwardPorts": [4000, 4001],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=elixir-command-history,target=/commandhistory,type=volume"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls"
+      ]
+    }
+  },
+  "postCreateCommand": "git config --global --add safe.directory '*'"
+}

@@ -1,0 +1,77 @@
+name: Build and Push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+    inputs:
+      ELIXIR_VERSION:
+        description: 'Elixir version'
+        required: true
+        default: '1.19.4'
+      OTP_VERSION:
+        description: 'Erlang/OTP version'
+        required: true
+        default: '28.5.0.1'
+      NVIM_VERSION:
+        description: 'Neovim version'
+        required: true
+        default: 'v0.10.4'
+      image_tag:
+        description: 'Additional image tag (optional)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/devcontainer-elixir
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+            type=raw,value=elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }}
+            type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.image_tag != '' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ELIXIR_VERSION=${{ inputs.ELIXIR_VERSION || '1.19.4' }}
+            OTP_VERSION=${{ inputs.OTP_VERSION || '28.5.0.1' }}
+            NVIM_VERSION=${{ inputs.NVIM_VERSION || 'v0.10.4' }}
