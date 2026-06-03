@@ -94,12 +94,17 @@ RUN curl -fsSL \
 
 # Persistent history setup
 USER root
-RUN mkdir -p /commandhistory  && touch /commandhistory/.zsh_history
+RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
+  && mkdir -p /etc/zsh \
+  && printf '%s\n' \
+    'export PROMPT_COMMAND="history -a"' \
+    'export HISTFILE=/commandhistory/.zsh_history' \
+    'zstyle ":completion:*" menu select' \
+    'autoload -Uz compinit && compinit' \
+    > /etc/zsh/zshrc \
+  && chown root:root /etc/zsh/zshrc \
+  && chmod 644 /etc/zsh/zshrc
 USER dev
-RUN echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc \
-  && echo 'export HISTFILE=/commandhistory/.zsh_history' >> ~/.zshrc \
-  && echo 'zstyle ":completion:*" menu select' >> ~/.zshrc \
-  && echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 
 # Mix setup
 RUN mix local.hex --force && mix local.rebar --force
