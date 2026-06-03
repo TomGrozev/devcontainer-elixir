@@ -25,19 +25,23 @@ Reference the image in your project's `devcontainer.json`:
   "name": "Elixir Devcontainer",
   "image": "ghcr.io/tomgrozev/devcontainer-elixir:latest",
   "remoteUser": "dev",
-  "forwardPorts": [4000, 4001],
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "remoteEnv": {
+    "MIX_BUILD_PATH": "/workspace/_build/devcontainer",
+    "MIX_DEPS_PATH": "/workspace/deps/devcontainer"
+  },
+  "containerEnv": {
+    "DEVCONTAINER": "true",
+    "EDITOR": "nvim",
+    "VISUAL": "nvim",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "false"
+  },
+  "forwardPorts": [4000],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "mounts": [
     "source=elixir-command-history,target=/commandhistory,type=volume"
   ],
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "JakeBecker.elixir-ls"
-      ]
-    }
-  }
+  "postCreateCommand": "git config --global --add safe.directory '*' && mix deps.get"
 }
 ```
 
