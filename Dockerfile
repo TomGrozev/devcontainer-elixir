@@ -97,11 +97,11 @@ USER root
 RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   && mkdir -p /etc/zsh \
   && printf '%s\n' \
-    'export PROMPT_COMMAND="history -a"' \
-    'export HISTFILE=/commandhistory/.zsh_history' \
-    'zstyle ":completion:*" menu select' \
-    'autoload -Uz compinit && compinit' \
-    > /etc/zsh/zshrc \
+  'export PROMPT_COMMAND="history -a"' \
+  'export HISTFILE=/commandhistory/.zsh_history' \
+  'zstyle ":completion:*" menu select' \
+  'autoload -Uz compinit && compinit' \
+  > /etc/zsh/zshrc \
   && chown root:root /etc/zsh/zshrc \
   && chmod 644 /etc/zsh/zshrc
 USER dev
@@ -125,13 +125,19 @@ RUN if [ "${INSTALL_TIDEWAVE}" = "true" ]; then \
   && chmod +x /usr/local/bin/tidewave; \
   fi
 
+# DevPod support: create runtime dirs and marker for non-root usage
+RUN mkdir -p /var/run/devpod /var/devpod
+
 # Create workspace and dirs owned by dev
 RUN mkdir -p /workspace \
   /home/dev/.config/opencode \
   /home/dev/.mix \
   /home/dev/.hex \
   /home/dev/.local/bin \
-  && chown -R dev:dev /workspace /home/dev /commandhistory
+  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod
+
+# DevPod git credential support: allow dev user to write system gitconfig
+RUN touch /etc/gitconfig && chown dev:dev /etc/gitconfig
 
 WORKDIR /workspace
 
