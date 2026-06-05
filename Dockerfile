@@ -29,8 +29,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
   NPM_CONFIG_PREFIX=/home/dev/.local \
   PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:${PATH}"
 
-# System packages, locale, timezone, node
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# System packages, locale, timezone, Node.js
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  set -e \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
   less \
   git \
   procps \
@@ -41,21 +45,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   ca-certificates \
   jq \
-  vim-tiny \
   locales \
   gcc \
   make \
   libc-dev \
   inotify-tools \
+  gpg \
   && sed -i 's/^# *en_AU.UTF-8/en_AU.UTF-8/' /etc/locale.gen \
   && locale-gen en_AU.UTF-8 \
   && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
   && echo ${TZ} > /etc/timezone \
-  && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+  > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update \
   && apt-get install -y --no-install-recommends nodejs \
-  && ln -sf /usr/bin/vim.tiny /usr/bin/vim \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+  && rm -rf /tmp/* /var/tmp/*
 
 # Create dev user
 RUN groupadd --gid 1000 dev \
@@ -76,11 +82,8 @@ RUN case "${TARGETARCH}" in \
   && ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim \
   && rm /tmp/nvim.tar.gz
 
-# Install opencode as dev user
+# zsh-in-docker with plugins
 USER dev
-RUN curl -fsSL https://opencode.ai/install | bash
-
-# zsh-in-docker with plugins and history
 RUN curl -fsSL \
   "https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh" \
   -o /tmp/zsh-in-docker.sh \
@@ -92,7 +95,7 @@ RUN curl -fsSL \
   -p zsh-autosuggestions \
   && rm /tmp/zsh-in-docker.sh
 
-# Persistent history setup
+# Persistent history, zshrc, directories, ownership, DevPod support
 USER root
 RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   && mkdir -p /etc/zsh \
@@ -103,17 +106,21 @@ RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   'autoload -Uz compinit && compinit' \
   > /etc/zsh/zshrc \
   && chown root:root /etc/zsh/zshrc \
-  && chmod 644 /etc/zsh/zshrc
-USER dev
-
-# Mix setup
-RUN mix local.hex --force && mix local.rebar --force
-
-# Git safe directory
-RUN git config --global --add safe.directory '*'
+  && chmod 644 /etc/zsh/zshrc \
+  && mkdir -p /workspace \
+  /home/dev/.config/opencode \
+  /home/dev/.mix \
+  /home/dev/.hex \
+  /home/dev/.local/bin \
+  /var/run/devpod \
+  /var/devpod \
+  && touch /etc/gitconfig && chown dev:dev /etc/gitconfig \
+  && touch /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
+  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod \
+  && chsh -s /bin/zsh dev \
+  && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
 
 # Optional Tidewave CLI
-USER root
 RUN if [ "${INSTALL_TIDEWAVE}" = "true" ]; then \
   case "${TARGETARCH}" in \
   amd64) TIDE_ARCH="x86_64" ;; \
@@ -125,26 +132,16 @@ RUN if [ "${INSTALL_TIDEWAVE}" = "true" ]; then \
   && chmod +x /usr/local/bin/tidewave; \
   fi
 
-# DevPod support: create runtime dirs and marker for non-root usage
-RUN mkdir -p /var/run/devpod /var/devpod
+# Mix setup
+USER dev
+RUN mix local.hex --force && mix local.rebar --force
 
-# Create workspace and dirs owned by dev
-RUN mkdir -p /workspace \
-  /home/dev/.config/opencode \
-  /home/dev/.mix \
-  /home/dev/.hex \
-  /home/dev/.local/bin \
-  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod
-
-# DevPod git credential support: allow dev user to write system gitconfig
-RUN touch /etc/gitconfig && chown dev:dev /etc/gitconfig
-
-# DevPod support: allow agent to write system paths
-RUN touch /etc/envfile.json \
-    && chown dev:dev /etc/envfile.json /usr/local/bin \
-    && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
+# Git safe directory
+RUN git config --global --add safe.directory '*'
 
 WORKDIR /workspace
 
-RUN chsh -s /bin/zsh dev
+# Install opencode (last for best cache efficiency)
+RUN curl -fsSL https://opencode.ai/install | bash
+
 USER dev

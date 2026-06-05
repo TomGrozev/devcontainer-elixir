@@ -1,0 +1,38 @@
+# Version control
+.git
+.github
+
+# Elixir build artifacts
+_build
+deps
+
+# Node
+node_modules
+
+# Environment and secrets
+.env
+.env.*
+*.secret
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.yml
+docker-compose*.yml
+
+# Documentation
+README.md
+LICENSE
+
+# Nix
+.direnv
+.devenv
