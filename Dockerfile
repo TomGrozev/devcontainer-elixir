@@ -7,6 +7,7 @@ ARG NODE_MAJOR=22
 ARG NVIM_VERSION=v0.10.4
 ARG ZSH_IN_DOCKER_VERSION=1.2.1
 ARG INSTALL_TIDEWAVE=false
+ARG RTK_VERSION=v0.42.1
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}
 
@@ -19,6 +20,7 @@ ARG NODE_MAJOR
 ARG NVIM_VERSION
 ARG ZSH_IN_DOCKER_VERSION
 ARG INSTALL_TIDEWAVE
+ARG RTK_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -115,9 +117,10 @@ RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   /home/dev/.local/bin \
   /var/run/devpod \
   /var/devpod \
+  /run/user/1000/gnupg \
   && touch /etc/gitconfig && chown dev:dev /etc/gitconfig \
   && echo '{}' > /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
-  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod \
+  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod /run/user/1000 \
   && chsh -s /bin/zsh dev \
   && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
 
@@ -132,6 +135,18 @@ RUN if [ "${INSTALL_TIDEWAVE}" = "true" ]; then \
   "https://github.com/tidewave-ai/tidewave-cli/releases/latest/download/tidewave-linux-${TIDE_ARCH}" \
   && chmod +x /usr/local/bin/tidewave; \
   fi
+
+# Install rtk (LLM token optimizer)
+RUN case "${TARGETARCH}" in \
+  amd64) RtkArch="x86_64-unknown-linux-musl" ;; \
+  arm64) RtkArch="aarch64-unknown-linux-gnu" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /tmp/rtk.tar.gz \
+  "https://github.com/rtk-ai/rtk/releases/download/${RTK_VERSION}/rtk-${RtkArch}.tar.gz" \
+  && tar -xzf /tmp/rtk.tar.gz -C /usr/local/bin/ \
+  && chmod +x /usr/local/bin/rtk \
+  && rm /tmp/rtk.tar.gz
 
 # Mix setup
 USER dev
@@ -149,6 +164,16 @@ RUN mv /usr/bin/su /usr/bin/su.real && \
   ln -sf /usr/bin/su.real /usr/sbin/su.real 2>/dev/null || true
 COPY su-wrapper.sh /usr/bin/su
 RUN chmod 755 /usr/bin/su
+USER dev
+
+# DevPod rootless support: replace sudo with passthrough wrapper
+# When running as non-root (UID 1000/dev), privilege escalation is
+# unnecessary and blocked by pod security contexts. This wrapper
+# strips sudo and executes commands directly as the current user.
+USER root
+RUN mv /usr/bin/sudo /usr/bin/sudo.real
+COPY sudo-wrapper.sh /usr/bin/sudo
+RUN chmod 755 /usr/bin/sudo
 USER dev
 
 WORKDIR /workspace
