@@ -2,6 +2,7 @@
   "name": "Elixir Devcontainer",
   "image": "ghcr.io/tomgrozev/devcontainer-elixir:latest",
   "remoteUser": "dev",
+  "userEnvProbe": "none",
   "remoteEnv": {
     "MIX_BUILD_PATH": "/workspace/_build/devcontainer",
     "MIX_DEPS_PATH": "/workspace/deps/devcontainer"
@@ -9,8 +10,7 @@
   "containerEnv": {
     "DEVCONTAINER": "true",
     "EDITOR": "nvim",
-    "VISUAL": "nvim",
-    "POWERLEVEL9K_DISABLE_GITSTATUS": "false"
+    "VISUAL": "nvim"
   },
   "forwardPorts": [4000],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",

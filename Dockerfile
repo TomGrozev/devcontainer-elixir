@@ -115,7 +115,7 @@ RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   /var/run/devpod \
   /var/devpod \
   && touch /etc/gitconfig && chown dev:dev /etc/gitconfig \
-  && touch /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
+  && echo '{}' > /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
   && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod \
   && chsh -s /bin/zsh dev \
   && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
@@ -138,6 +138,17 @@ RUN mix local.hex --force && mix local.rebar --force
 
 # Git safe directory
 RUN git config --global --add safe.directory '*'
+
+# DevPod rootless support: replace su with passthrough wrapper
+# When running as non-root (UID 1000/dev), all su calls to switch
+# to the dev user are no-ops. The wrapper just executes the command
+# directly, avoiding CAP_SETUID/CAP_SETGID requirements.
+USER root
+RUN mv /usr/bin/su /usr/bin/su.real && \
+    ln -sf /usr/bin/su.real /usr/sbin/su.real 2>/dev/null || true
+COPY su-wrapper.sh /usr/bin/su
+RUN chmod 755 /usr/bin/su
+USER dev
 
 WORKDIR /workspace
 
