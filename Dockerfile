@@ -51,6 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libc-dev \
   inotify-tools \
   gpg \
+  gpg-agent \
   && sed -i 's/^# *en_AU.UTF-8/en_AU.UTF-8/' /etc/locale.gen \
   && locale-gen en_AU.UTF-8 \
   && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -145,7 +146,7 @@ RUN git config --global --add safe.directory '*'
 # directly, avoiding CAP_SETUID/CAP_SETGID requirements.
 USER root
 RUN mv /usr/bin/su /usr/bin/su.real && \
-    ln -sf /usr/bin/su.real /usr/sbin/su.real 2>/dev/null || true
+  ln -sf /usr/bin/su.real /usr/sbin/su.real 2>/dev/null || true
 COPY su-wrapper.sh /usr/bin/su
 RUN chmod 755 /usr/bin/su
 USER dev

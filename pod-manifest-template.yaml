@@ -19,7 +19,7 @@ spec:
           subPath: auth.json
           readOnly: true
       securityContext:
-        allowPrivilegeEscalation: true
+        allowPrivilegeEscalation: false
         capabilities:
           drop:
             - ALL
