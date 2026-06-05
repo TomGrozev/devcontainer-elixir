@@ -139,6 +139,11 @@ RUN mkdir -p /workspace \
 # DevPod git credential support: allow dev user to write system gitconfig
 RUN touch /etc/gitconfig && chown dev:dev /etc/gitconfig
 
+# DevPod support: allow agent to write system paths
+RUN touch /etc/envfile.json \
+    && chown dev:dev /etc/envfile.json /usr/local/bin \
+    && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
+
 WORKDIR /workspace
 
 RUN chsh -s /bin/zsh dev
