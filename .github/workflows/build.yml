@@ -5,6 +5,9 @@ on:
     branches: [master]
     paths:
       - "Dockerfile"
+      - ".dockerignore"
+      - "su-wrapper.sh"
+      - "sudo-wrapper.sh"
       - ".github/workflows/build.yml"
   workflow_dispatch:
     inputs:
