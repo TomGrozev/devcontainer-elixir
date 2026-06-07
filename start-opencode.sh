@@ -8,7 +8,7 @@
 # this script) can read it from the environment.
 #
 # Usage:
-#   ./start-opencode.sh                       # use default port (40966)
+#   ./start-opencode.sh                       # use default port (4096)
 #   ./start-opencode.sh 5050                  # custom port via positional arg
 #   OPENCODE_PORT=5050 ./start-opencode.sh    # custom port via env var
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DEFAULT_PORT=40966
+DEFAULT_PORT=4096
 LOG_FILE=/tmp/opencode-serve.log
 
 # ---------------------------------------------------------------------------
