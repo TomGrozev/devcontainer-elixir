@@ -2,14 +2,7 @@ name: Build and Push
 
 on:
   push:
-    branches: [master]
     tags: ["*"]
-    paths:
-      - "Dockerfile"
-      - ".dockerignore"
-      - "su-wrapper.sh"
-      - "sudo-wrapper.sh"
-      - ".github/workflows/build.yml"
   workflow_dispatch:
     inputs:
       ELIXIR_VERSION:
