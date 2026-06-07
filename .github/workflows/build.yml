@@ -3,6 +3,7 @@ name: Build and Push
 on:
   push:
     branches: [master]
+    tags: ["*"]
     paths:
       - "Dockerfile"
       - ".dockerignore"
@@ -43,6 +44,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract version tag
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -64,6 +74,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' && github.event_name == 'push' }}
             type=raw,value=elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }}
+            type=raw,value=${{ steps.version.outputs.tag }}-elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }},enable=${{ steps.version.outputs.tag != '' }}
+            type=raw,value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
             type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.image_tag != '' }}
 
       - name: Build and push

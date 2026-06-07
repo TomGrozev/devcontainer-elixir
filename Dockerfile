@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   locales \
   gcc \
   make \
+  openssh-client \
   libc-dev \
   inotify-tools \
   gpg \
@@ -181,4 +182,10 @@ WORKDIR /workspace
 # Install opencode (last for best cache efficiency)
 RUN curl -fsSL https://opencode.ai/install | bash
 
+# Install opencode server startup script. The script is placed at the root
+# of the filesystem and made world-executable so the dev user can run it
+# directly (e.g. `start-opencode.sh` or `bash /start-opencode.sh`).
+USER root
+COPY start-opencode.sh /start-opencode.sh
+RUN chmod +x /start-opencode.sh
 USER dev
