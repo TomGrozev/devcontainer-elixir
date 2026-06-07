@@ -68,7 +68,7 @@ export OPENCODE_SERVER_PASSWORD="${PASSWORD}"
 #   disown       — remove from the shell's job table
 #   >LOG 2>&1    — capture both stdout and stderr to the log file
 # ---------------------------------------------------------------------------
-nohup opencode serve --port "${PORT}" > "${LOG_FILE}" 2>&1 &
+nohup opencode serve --port "${PORT}" --hostname 0.0.0.0 > "${LOG_FILE}" 2>&1 &
 disown
 
 # ---------------------------------------------------------------------------
