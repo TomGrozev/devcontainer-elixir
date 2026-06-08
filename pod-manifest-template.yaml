@@ -11,7 +11,7 @@ spec:
         items:
           - key: auth.json
             path: auth.json
-    - name: opencode-auth
+    - name: local-share
       emptyDir:
         medium: Memory
         sizeLimit: 300Mi
@@ -21,7 +21,7 @@ spec:
       command:
         - sh
         - -c
-        - "cp /secret/auth.json /auth/auth.json && chmod 0600 /auth/auth.json"
+        - "mkdir -p /share/opencode && cp /secret/auth.json /share/opencode/auth.json && chmod 0600 /share/opencode/auth.json"
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -29,14 +29,14 @@ spec:
         - name: opencode-auth-secret
           mountPath: /secret
           readOnly: true
-        - name: opencode-auth
-          mountPath: /auth
+        - name: local-share
+          mountPath: /share
   containers:
     - name: devpod
       resources: {}
       volumeMounts:
-        - name: opencode-auth
-          mountPath: /home/dev/.local/share/opencode
+        - name: local-share
+          mountPath: /home/dev/.local/share
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

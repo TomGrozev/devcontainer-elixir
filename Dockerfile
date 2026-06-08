@@ -31,7 +31,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
   NPM_CONFIG_PREFIX=/home/dev/.local \
   PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:${PATH}"
 
-# System packages, locale, timezone, Node.js
+# System packages, locale, timezone, Node.js, GitHub CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   set -e \
@@ -63,8 +63,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
   && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
   > /etc/apt/sources.list.d/nodesource.list \
+  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  > /etc/apt/sources.list.d/github-cli.list \
   && apt-get update \
-  && apt-get install -y --no-install-recommends nodejs \
+  && apt-get install -y --no-install-recommends nodejs gh \
   && rm -rf /tmp/* /var/tmp/*
 
 # Create dev user
