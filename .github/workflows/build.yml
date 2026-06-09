@@ -16,7 +16,7 @@ on:
       NVIM_VERSION:
         description: "Neovim version"
         required: true
-        default: "v0.10.4"
+        default: "v0.12.2"
       image_tag:
         description: "Additional image tag (optional)"
         required: false
