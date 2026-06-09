@@ -49,20 +49,21 @@ Or copy the provided `devcontainer.json` example from this repo into your projec
 
 ## Build Args
 
-| Arg | Default | Description |
-|-----|---------|-------------|
-| `ELIXIR_VERSION` | `1.19.4` | Elixir version |
-| `OTP_VERSION` | `28.5.0.1` | Erlang/OTP version |
-| `DEBIAN_VERSION` | `trixie-20260518-slim` | Debian base image tag |
-| `TZ` | `Australia/Sydney` | System timezone |
-| `NODE_MAJOR` | `22` | Node.js major version |
-| `NVIM_VERSION` | `v0.10.4` | Neovim release tag |
-| `ZSH_IN_DOCKER_VERSION` | `1.2.1` | zsh-in-docker version |
-| `INSTALL_TIDEWAVE` | `false` | Install Tidewave CLI |
+| Arg                     | Default                | Description           |
+| ----------------------- | ---------------------- | --------------------- |
+| `ELIXIR_VERSION`        | `1.19.4`               | Elixir version        |
+| `OTP_VERSION`           | `28.5.0.1`             | Erlang/OTP version    |
+| `DEBIAN_VERSION`        | `trixie-20260518-slim` | Debian base image tag |
+| `TZ`                    | `Australia/Sydney`     | System timezone       |
+| `NODE_MAJOR`            | `22`                   | Node.js major version |
+| `NVIM_VERSION`          | `v0.12.2`              | Neovim release tag    |
+| `ZSH_IN_DOCKER_VERSION` | `1.2.1`                | zsh-in-docker version |
+| `INSTALL_TIDEWAVE`      | `false`                | Install Tidewave CLI  |
 
 ## Manual Rebuild
 
 Trigger a manual build via **Actions > Build and Push > Run workflow** in GitHub. You can override:
+
 - `ELIXIR_VERSION`
 - `OTP_VERSION`
 - `NVIM_VERSION`
