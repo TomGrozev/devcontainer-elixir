@@ -8,6 +8,7 @@ ARG NVIM_VERSION=v0.12.2
 ARG ZSH_IN_DOCKER_VERSION=1.2.1
 ARG INSTALL_TIDEWAVE=false
 ARG RTK_VERSION=v0.42.1
+ARG DELTA_VERSION=0.18.2
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}
 
@@ -21,6 +22,7 @@ ARG NVIM_VERSION
 ARG ZSH_IN_DOCKER_VERSION
 ARG INSTALL_TIDEWAVE
 ARG RTK_VERSION
+ARG DELTA_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -153,6 +155,19 @@ RUN case "${TARGETARCH}" in \
   && tar -xzf /tmp/rtk.tar.gz -C /usr/local/bin/ \
   && chmod +x /usr/local/bin/rtk \
   && rm /tmp/rtk.tar.gz
+
+# Install delta (syntax-highlighting pager for git)
+RUN case "${TARGETARCH}" in \
+  amd64) DeltaArch="x86_64-unknown-linux-musl" ;; \
+  arm64) DeltaArch="aarch64-unknown-linux-gnu" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /tmp/delta.tar.gz \
+  "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/delta-${DELTA_VERSION}-${DeltaArch}.tar.gz" \
+  && tar -xzf /tmp/delta.tar.gz -C /tmp/ \
+  && mv /tmp/delta-${DELTA_VERSION}-${DeltaArch}/delta /usr/local/bin/ \
+  && chmod +x /usr/local/bin/delta \
+  && rm -rf /tmp/delta*
 
 # Mix setup
 USER dev
