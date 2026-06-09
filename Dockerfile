@@ -124,6 +124,7 @@ RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
   /var/devpod \
   /run/user/1000/gnupg \
   && touch /etc/gitconfig && chown dev:dev /etc/gitconfig \
+  && chgrp dev /etc && chmod g+w /etc \
   && echo '{}' > /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
   && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod /run/user/1000 \
   && chsh -s /bin/zsh dev \
