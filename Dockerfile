@@ -54,6 +54,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   make \
   openssh-client \
   libc-dev \
+  build-essential \
+  g++ \
   inotify-tools \
   gpg \
   gpg-agent \
