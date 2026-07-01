@@ -65,7 +65,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' && github.event_name == 'push' }}
+            type=raw,value=latest
             type=raw,value=elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }}
             type=raw,value=${{ steps.version.outputs.tag }}-elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }},enable=${{ steps.version.outputs.tag != '' }}
             type=raw,value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}

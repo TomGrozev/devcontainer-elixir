@@ -1,3 +1,5 @@
+# System tools baked; opencode/zsh-plugins/asdf/mix-hex deferred to Coder modules + dotfiles + PVC — Coder-only image
+
 # Build args
 ARG ELIXIR_VERSION=1.19.4
 ARG OTP_VERSION=28.5.0.1
@@ -5,10 +7,9 @@ ARG DEBIAN_VERSION=trixie-20260518-slim
 ARG TZ=Australia/Sydney
 ARG NODE_MAJOR=22
 ARG NVIM_VERSION=v0.12.2
-ARG ZSH_IN_DOCKER_VERSION=1.2.1
-ARG INSTALL_TIDEWAVE=false
 ARG RTK_VERSION=v0.42.1
 ARG DELTA_VERSION=0.18.2
+ARG AGENTAPI_VERSION=v0.11.2
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}
 
@@ -19,15 +20,13 @@ ARG DEBIAN_VERSION
 ARG TZ
 ARG NODE_MAJOR
 ARG NVIM_VERSION
-ARG ZSH_IN_DOCKER_VERSION
-ARG INSTALL_TIDEWAVE
 ARG RTK_VERSION
 ARG DELTA_VERSION
+ARG AGENTAPI_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
   TZ=${TZ} \
-  DEVCONTAINER=true \
   EDITOR=nvim \
   VISUAL=nvim \
   NPM_CONFIG_PREFIX=/home/dev/.local \
@@ -94,57 +93,35 @@ RUN case "${TARGETARCH}" in \
   && ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim \
   && rm /tmp/nvim.tar.gz
 
-# zsh-in-docker with plugins
-USER dev
-RUN curl -fsSL \
-  "https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh" \
-  -o /tmp/zsh-in-docker.sh \
-  && chmod +x /tmp/zsh-in-docker.sh \
-  && /tmp/zsh-in-docker.sh \
-  -p git \
-  -p fzf \
-  -p mix \
-  -p zsh-autosuggestions \
-  && rm /tmp/zsh-in-docker.sh
+# Install AgentAPI (multi-arch) — used by the Coder opencode module at runtime
+RUN case "${TARGETARCH}" in \
+  amd64) AgentApiArch="amd64" ;; \
+  arm64) AgentApiArch="arm64" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /usr/local/bin/agentapi \
+  "https://github.com/coder/agentapi/releases/download/${AGENTAPI_VERSION}/agentapi-linux-${AgentApiArch}" \
+  && chmod +x /usr/local/bin/agentapi
 
-# Persistent history, zshrc, directories, ownership, DevPod support
+# zsh skeleton, directories, ownership, Coder rootless pod support
 USER root
-RUN mkdir -p /commandhistory && touch /commandhistory/.zsh_history \
-  && mkdir -p /etc/zsh \
+RUN mkdir -p /etc/zsh \
   && printf '%s\n' \
-  'export PROMPT_COMMAND="history -a"' \
-  'export HISTFILE=/commandhistory/.zsh_history' \
   'zstyle ":completion:*" menu select' \
   'autoload -Uz compinit && compinit' \
   > /etc/zsh/zshrc \
   && chown root:root /etc/zsh/zshrc \
   && chmod 644 /etc/zsh/zshrc \
-  && mkdir -p /workspace \
+  && mkdir -p \
   /home/dev/.config/opencode \
   /home/dev/.mix \
   /home/dev/.hex \
   /home/dev/.local/bin \
-  /var/run/devpod \
-  /var/devpod \
   /run/user/1000/gnupg \
   && touch /etc/gitconfig && chown dev:dev /etc/gitconfig \
-  && chgrp dev /etc && chmod g+w /etc \
-  && echo '{}' > /etc/envfile.json && chown dev:dev /etc/envfile.json /usr/local/bin \
-  && chown -R dev:dev /workspace /home/dev /commandhistory /var/run/devpod /var/devpod /run/user/1000 \
-  && chsh -s /bin/zsh dev \
-  && sed -i 's/^auth\s\+sufficient\s\+pam_rootok.so/auth\t sufficient\t pam_rootok.so\nauth\t sufficient\t pam_succeed_if.so user = dev/' /etc/pam.d/su
-
-# Optional Tidewave CLI
-RUN if [ "${INSTALL_TIDEWAVE}" = "true" ]; then \
-  case "${TARGETARCH}" in \
-  amd64) TIDE_ARCH="x86_64" ;; \
-  arm64) TIDE_ARCH="aarch64" ;; \
-  *) TIDE_ARCH="${TARGETARCH}" ;; \
-  esac \
-  && curl -fsSL -o /usr/local/bin/tidewave \
-  "https://github.com/tidewave-ai/tidewave-cli/releases/latest/download/tidewave-linux-${TIDE_ARCH}" \
-  && chmod +x /usr/local/bin/tidewave; \
-  fi
+  && chown dev:dev /usr/local/bin \
+  && chown -R dev:dev /home/dev /run/user/1000 \
+  && chsh -s /bin/zsh dev
 
 # Install rtk (LLM token optimizer)
 RUN case "${TARGETARCH}" in \
@@ -171,14 +148,10 @@ RUN case "${TARGETARCH}" in \
   && chmod +x /usr/local/bin/delta \
   && rm -rf /tmp/delta*
 
-# Mix setup
-USER dev
-RUN mix local.hex --force && mix local.rebar --force
-
 # Git safe directory
 RUN git config --global --add safe.directory '*'
 
-# DevPod rootless support: replace su with passthrough wrapper
+# Coder rootless pod support: replace su with passthrough wrapper
 # When running as non-root (UID 1000/dev), all su calls to switch
 # to the dev user are no-ops. The wrapper just executes the command
 # directly, avoiding CAP_SETUID/CAP_SETGID requirements.
@@ -189,7 +162,7 @@ COPY su-wrapper.sh /usr/bin/su
 RUN chmod 755 /usr/bin/su
 USER dev
 
-# DevPod rootless support: replace sudo with passthrough wrapper
+# Coder rootless pod support: replace sudo with passthrough wrapper
 # When running as non-root (UID 1000/dev), privilege escalation is
 # unnecessary and blocked by pod security contexts. This wrapper
 # strips sudo and executes commands directly as the current user.
@@ -199,15 +172,4 @@ COPY sudo-wrapper.sh /usr/bin/sudo
 RUN chmod 755 /usr/bin/sudo
 USER dev
 
-WORKDIR /workspace
-
-# Install opencode (last for best cache efficiency)
-RUN curl -fsSL https://opencode.ai/install | bash
-
-# Install opencode server startup script. The script is placed at the root
-# of the filesystem and made world-executable so the dev user can run it
-# directly (e.g. `start-opencode.sh` or `bash /start-opencode.sh`).
-USER root
-COPY start-opencode.sh /start-opencode.sh
-RUN chmod +x /start-opencode.sh
-USER dev
+WORKDIR /home/dev/workspace
