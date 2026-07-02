@@ -331,7 +331,7 @@ resource "coder_app" "opencode" {
   url          = "http://localhost:4096"
   subdomain    = true
   share        = "owner"
-  open_in      = "slim-window"
+  open_in      = "tab"
 
   healthcheck {
     url       = "http://localhost:4096/global/health"
