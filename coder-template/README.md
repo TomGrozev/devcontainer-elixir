@@ -25,30 +25,28 @@ The image is a full Elixir dev environment: Elixir, Erlang/OTP, Node.js, Neovim,
 
 ## What this template uses
 
-| Module / Resource | Purpose |
-| --- | --- |
-| `coder_agent.main` | Registers the Coder agent in the workspace |
-| `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts |
-| `kubernetes_deployment_v1.main` | Runs the container as rootless (UID 1000) |
-| `module.dotfiles` | Clones your dotfiles on first start (git@github.com:TomGrozev/dots.git) |
-| `module.opencode` | Installs OpenCode and registers the Coder app |
+| Module / Resource                            | Purpose                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `coder_agent.main`                           | Registers the Coder agent in the workspace                                       |
+| `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts                                 |
+| `kubernetes_deployment_v1.main`              | Runs the container as rootless (UID 1000)                                        |
+| `module.dotfiles`                            | Clones your dotfiles on first start (<git@github.com>:TomGrozev/dots.git)        |
+| `coder_app.opencode`                         | Proxies the in-image OpenCode API server via subdomain (`http://localhost:4096`) |
 
 ## Parameters
 
 Parameters are configurable from the Coder UI at workspace creation or (for mutable ones) via workspace updates.
 
-| Parameter | Default | Mutable | Description |
-| --- | --- | --- | --- |
-| `image` | `ghcr.io/tomgrozev/devcontainer-elixir:latest` | yes | Container image to deploy |
-| `repo` | `""` | yes | Git repo URL to clone into `/home/dev/workspace` (leave empty for no auto-clone) |
-| `cpu` | `1` | yes | CPU limit (cores) |
-| `memory` | `2` | yes | Memory limit (GiB) |
-| `home_volume_size` | `20` | no | `/home/dev` volume size (GiB) |
-| `storage_class_name` | `""` | no | Kubernetes StorageClass (empty = cluster default) |
+| Parameter            | Default                                        | Mutable | Description                                                                      |
+| -------------------- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `image`              | `ghcr.io/tomgrozev/devcontainer-elixir:latest` | yes     | Container image to deploy                                                        |
+| `repo`               | `""`                                           | yes     | Git repo URL to clone into `/home/dev/workspace` (leave empty for no auto-clone) |
+| `cpu`                | `1`                                            | yes     | CPU limit (cores)                                                                |
+| `memory`             | `2`                                            | yes     | Memory limit (GiB)                                                               |
+| `home_volume_size`   | `20`                                           | no      | `/home/dev` volume size (GiB)                                                    |
+| `storage_class_name` | `""`                                           | no      | Kubernetes StorageClass (empty = cluster default)                                |
 
 ## OpenCode setup
-
-OpenCode is installed by the `coder-labs/opencode` module at first workspace start and persists on the PVC.
 
 ### Authentication (user secrets)
 
@@ -60,18 +58,14 @@ cat auth.json | coder secret create opencode-auth --file ~/.local/share/opencode
 
 The agent writes the secret before the startup script runs. The module skips its own auth.json write when `auth_json = ""` (the default in this template).
 
-### AgentAPI
-
-AgentAPI is baked into the image at `/usr/local/bin/agentapi` — the module does not install it (`install_agentapi = false`).
-
 ## How it works
 
 1. Coder applies this Terraform against your Kubernetes cluster.
 2. A `PersistentVolumeClaim` is created in the configured namespace.
 3. A `Deployment` is created that runs the prebuilt image as a rootless container (UID 1000).
 4. The main container runs `coder_agent.main.init_script` which bootstraps the agent and connects to the Coder server.
-5. The agent's `startup_script` runs first-time init on the empty PVC: creates directories, bootstraps mix/hex, and optionally clones a repo.
-6. The OpenCode module installs OpenCode and registers a dashboard button.
+5. The agent's `startup_script` runs first-time init on the empty PVC: creates directories, bootstraps mix/hex, optionally clones a repo, then launches `opencode serve --port 4096 --hostname 0.0.0.0` in the background.
+6. The `coder_app.opencode` resource registers a dashboard button that proxies to `http://localhost:4096` via a subdomain.
 
 ## Customization
 
