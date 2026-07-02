@@ -1,4 +1,4 @@
-# System tools baked; opencode/zsh-plugins/asdf/mix-hex deferred to Coder modules + dotfiles + PVC — Coder-only image
+# System tools + opencode baked; zsh-plugins/asdf/mix-hex deferred to Coder modules + dotfiles + PVC — Coder-only image
 
 # Build args
 ARG ELIXIR_VERSION=1.19.4
@@ -12,8 +12,6 @@ ARG NVIM_VERSION=v0.12.2
 ARG RTK_VERSION=v0.42.1
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.18.2
-# renovate: datasource=github-releases depName=coder/agentapi extractVersion=^(?<version>.*)$
-ARG AGENTAPI_VERSION=v0.11.2
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION=1.17.13
 
@@ -28,7 +26,6 @@ ARG NODE_MAJOR
 ARG NVIM_VERSION
 ARG RTK_VERSION
 ARG DELTA_VERSION
-ARG AGENTAPI_VERSION
 ARG OPENCODE_VERSION
 ARG TARGETARCH
 
@@ -37,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
   EDITOR=nvim \
   VISUAL=nvim \
   NPM_CONFIG_PREFIX=/home/dev/.local \
-  PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:${PATH}"
+  PATH="/home/dev/.local/bin:${PATH}"
 
 # System packages, locale, timezone, Node.js, GitHub CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -99,16 +96,6 @@ RUN case "${TARGETARCH}" in \
   && mv /opt/nvim-linux-${NvimArch} /opt/nvim \
   && ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim \
   && rm /tmp/nvim.tar.gz
-
-# Install AgentAPI (multi-arch) — used by the Coder opencode module at runtime
-RUN case "${TARGETARCH}" in \
-  amd64) AgentApiArch="amd64" ;; \
-  arm64) AgentApiArch="arm64" ;; \
-  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
-  esac \
-  && curl -fsSL -o /usr/local/bin/agentapi \
-  "https://github.com/coder/agentapi/releases/download/${AGENTAPI_VERSION}/agentapi-linux-${AgentApiArch}" \
-  && chmod +x /usr/local/bin/agentapi
 
 # zsh skeleton, directories, ownership, Coder rootless pod support
 USER root
@@ -180,16 +167,15 @@ RUN chmod 755 /usr/bin/sudo
 USER dev
 
 # Install OpenCode CLI (multi-arch)
-RUN mkdir -p /home/dev/.opencode/bin \
-  && case "${TARGETARCH}" in \
+RUN case "${TARGETARCH}" in \
   amd64) OpenCodeArch="x64" ;; \
   arm64) OpenCodeArch="arm64" ;; \
   *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
   esac \
   && curl -fsSL -o /tmp/opencode.tar.gz \
   "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OpenCodeArch}.tar.gz" \
-  && tar -xzf /tmp/opencode.tar.gz -C /home/dev/.opencode/bin/ \
-  && chmod +x /home/dev/.opencode/bin/opencode \
+  && tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin/ \
+  && chmod +x /usr/local/bin/opencode \
   && rm /tmp/opencode.tar.gz \
   && opencode --version
 

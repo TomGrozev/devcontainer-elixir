@@ -232,7 +232,7 @@ resource "kubernetes_deployment_v1" "main" {
           run_as_group           = 1000
           run_as_non_root        = true
           fs_group               = 1000
-          fs_group_change_policy = "OnRootMismatch"
+          fs_group_change_policy = "Always"
           seccomp_profile {
             type = "RuntimeDefault"
           }
