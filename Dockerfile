@@ -6,10 +6,16 @@ ARG OTP_VERSION=28.5.0.1
 ARG DEBIAN_VERSION=trixie-20260518-slim
 ARG TZ=Australia/Sydney
 ARG NODE_MAJOR=22
+# renovate: datasource=github-releases depName=neovim/neovim extractVersion=^(?<version>.*)$
 ARG NVIM_VERSION=v0.12.2
+# renovate: datasource=github-releases depName=rtk-ai/rtk extractVersion=^(?<version>.*)$
 ARG RTK_VERSION=v0.42.1
+# renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.18.2
+# renovate: datasource=github-releases depName=coder/agentapi extractVersion=^(?<version>.*)$
 ARG AGENTAPI_VERSION=v0.11.2
+# renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
+ARG OPENCODE_VERSION=1.17.13
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}
 
@@ -23,6 +29,7 @@ ARG NVIM_VERSION
 ARG RTK_VERSION
 ARG DELTA_VERSION
 ARG AGENTAPI_VERSION
+ARG OPENCODE_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -171,5 +178,19 @@ RUN mv /usr/bin/sudo /usr/bin/sudo.real
 COPY sudo-wrapper.sh /usr/bin/sudo
 RUN chmod 755 /usr/bin/sudo
 USER dev
+
+# Install OpenCode CLI (multi-arch)
+RUN mkdir -p /home/dev/.opencode/bin \
+  && case "${TARGETARCH}" in \
+  amd64) OpenCodeArch="x64" ;; \
+  arm64) OpenCodeArch="arm64" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /tmp/opencode.tar.gz \
+  "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OpenCodeArch}.tar.gz" \
+  && tar -xzf /tmp/opencode.tar.gz -C /home/dev/.opencode/bin/ \
+  && chmod +x /home/dev/.opencode/bin/opencode \
+  && rm /tmp/opencode.tar.gz \
+  && opencode --version
 
 WORKDIR /home/dev/workspace

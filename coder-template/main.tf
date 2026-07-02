@@ -135,6 +135,9 @@ resource "coder_agent" "main" {
         git clone "$REPO" "/home/dev/workspace/$REPO_NAME" || true
       fi
     fi
+
+    # Start the OpenCode API server for Coder app proxying
+    nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
   EOT
 }
 
@@ -215,7 +218,10 @@ resource "kubernetes_deployment_v1" "main" {
     template {
       metadata {
         labels = {
-          "app.kubernetes.io/name" = "coder-workspace"
+          "app.kubernetes.io/name"   = "coder-workspace"
+          "com.coder.resource"       = "true"
+          "com.coder.workspace.pod"  = "true"
+          "com.coder.workspace.name" = data.coder_workspace.me.name
         }
       }
 
@@ -313,20 +319,23 @@ module "dotfiles" {
   source                  = "registry.coder.com/coder/dotfiles/coder"
   version                 = "1.4.2"
   agent_id                = coder_agent.main.id
-  default_dotfiles_uri    = "git@github.com:TomGrozev/dots.git"
+  default_dotfiles_uri    = "https://github.com/TomGrozev/dots"
   default_dotfiles_branch = "master"
   manual_update           = true
 }
 
-module "opencode" {
-  source  = "registry.coder.com/coder-labs/opencode/coder"
-  version = "0.1.2"
+resource "coder_app" "opencode" {
+  agent_id     = coder_agent.main.id
+  slug         = "opencode"
+  display_name = "OpenCode"
+  url          = "http://localhost:4096"
+  subdomain    = true
+  share        = "owner"
+  open_in      = "slim-window"
 
-  agent_id         = coder_agent.main.id
-  workdir          = "/home/dev/workspace"
-  install_opencode = true
-  install_agentapi = false
-  auth_json        = ""
-  report_tasks     = true
-  subdomain        = false
+  healthcheck {
+    url       = "http://localhost:4096/global/health"
+    interval  = 5
+    threshold = 6
+  }
 }
