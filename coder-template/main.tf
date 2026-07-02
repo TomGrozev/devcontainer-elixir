@@ -266,8 +266,8 @@ resource "kubernetes_deployment_v1" "main" {
 
           resources {
             requests = {
-              cpu    = data.coder_parameter.cpu.value
-              memory = "${data.coder_parameter.memory.value}Gi"
+              cpu    = "10m"
+              memory = "512Mi"
             }
             limits = {
               cpu    = data.coder_parameter.cpu.value
