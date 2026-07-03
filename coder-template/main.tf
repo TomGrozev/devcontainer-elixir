@@ -130,14 +130,17 @@ resource "coder_agent" "main" {
     # Clone the repo parameter if set and not already present
     REPO="${data.coder_parameter.repo.value}"
     if [ -n "$REPO" ]; then
-      REPO_NAME=$(basename "$REPO" .git)
-      if [ ! -d "/home/dev/workspace/$REPO_NAME" ]; then
-        git clone "$REPO" "/home/dev/workspace/$REPO_NAME" || true
+      if [ ! -e "/home/dev/workspace/.git" ]; then
+        git clone "$REPO" /home/dev/workspace || true
       fi
     fi
 
     # Start the OpenCode API server for Coder app proxying
-    nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
+    if command -v zsh >/dev/null 2>&1; then
+      nohup zsh -c 'opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
+    else
+      nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
+    fi
   EOT
 }
 
@@ -262,6 +265,11 @@ resource "kubernetes_deployment_v1" "main" {
           env {
             name  = "CODER_AGENT_TOKEN"
             value = coder_agent.main.token
+          }
+
+          env {
+            name  = "DEVCONTAINER"
+            value = "true"
           }
 
           resources {
