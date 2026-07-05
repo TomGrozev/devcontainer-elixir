@@ -149,15 +149,16 @@ resource "coder_agent" "main" {
     # Apply dotfiles synchronously. Inlined here (rather than via the
     # coder/dotfiles module) so anything dotfiles write to ~/.zshenv is
     # guaranteed to be in place before `opencode serve` starts below.
-    # Skips if already cloned on the persistent volume (manual update only).
-    if [ ! -d /home/dev/.coder/dotfiles/.git ]; then
-      GIT_SSH_COMMAND="$GIT_SSH_COMMAND -o StrictHostKeyChecking=accept-new" \
-        coder dotfiles "${data.coder_parameter.dotfiles_uri.value}" -y 2>&1 | tee /home/dev/.dotfiles.log || true
+    # Always re-applies dotfiles on every workspace start.
+    if [ -d /home/dev/.coder/dotfiles/.git ]; then
+      git -C /home/dev/.coder/dotfiles pull --force || true
     fi
+    GIT_SSH_COMMAND="$GIT_SSH_COMMAND -o StrictHostKeyChecking=accept-new" \
+      coder dotfiles "${data.coder_parameter.dotfiles_uri.value}" -y 2>&1 | tee /home/dev/.dotfiles.log || true
 
     # Start the OpenCode API server for Coder app proxying
     if command -v zsh >/dev/null 2>&1; then
-      nohup zsh -c 'echo "Starting opencode with config from: $OPENCODE_CONFIG" >> /tmp/opencode.log && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
+      nohup zsh -c 'echo "Starting opencode with config from: $OPENCODE_CONFIG" && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
     else
       nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
     fi
@@ -363,6 +364,6 @@ resource "coder_app" "refresh_dotfiles" {
   slug         = "refresh-dotfiles"
   display_name = "Refresh Dotfiles"
   icon         = "/icon/dotfiles.svg"
-  command      = "coder dotfiles \"${data.coder_parameter.dotfiles_uri.value}\" -y"
+  command      = "if [ -d /home/dev/.coder/dotfiles/.git ]; then git -C /home/dev/.coder/dotfiles pull --force; fi && coder dotfiles \"${data.coder_parameter.dotfiles_uri.value}\" -y"
   share        = "owner"
 }
