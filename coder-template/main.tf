@@ -157,7 +157,7 @@ resource "coder_agent" "main" {
 
     # Start the OpenCode API server for Coder app proxying
     if command -v zsh >/dev/null 2>&1; then
-      nohup zsh -c 'opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
+      nohup zsh -c 'echo "Starting opencode with config from: ${OPENCODE_CONFIG:-$HOME/.config/opencode}" >> /tmp/opencode.log && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
     else
       nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
     fi

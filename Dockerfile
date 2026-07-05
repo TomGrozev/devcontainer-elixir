@@ -13,7 +13,7 @@ ARG RTK_VERSION=v0.42.1
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.18.2
 # renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
-ARG RIPGREP_VERSION=14.1.1
+ARG RIPGREP_VERSION=15.1.0
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION=1.17.13
 
@@ -147,14 +147,14 @@ RUN case "${TARGETARCH}" in \
 
 # Install ripgrep (fast search tool)
 RUN case "${TARGETARCH}" in \
-  amd64) RgArch="x86_64" ;; \
-  arm64) RgArch="aarch64" ;; \
+  amd64) RgArch="x86_64"; RgLibc="unknown-linux-musl" ;; \
+  arm64) RgArch="aarch64"; RgLibc="unknown-linux-gnu" ;; \
   *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
   esac \
   && curl -fsSL -o /tmp/ripgrep.tar.gz \
-  "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-${RgArch}-unknown-linux-musl.tar.gz" \
+  "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-${RgArch}-${RgLibc}.tar.gz" \
   && tar -xzf /tmp/ripgrep.tar.gz -C /tmp/ \
-  && mv /tmp/ripgrep-${RIPGREP_VERSION}-${RgArch}-unknown-linux-musl/rg /usr/local/bin/ \
+  && mv /tmp/ripgrep-${RIPGREP_VERSION}-${RgArch}-${RgLibc}/rg /usr/local/bin/ \
   && chmod +x /usr/local/bin/rg \
   && rm -rf /tmp/ripgrep*
 
