@@ -12,6 +12,8 @@ ARG NVIM_VERSION=v0.12.2
 ARG RTK_VERSION=v0.42.1
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.18.2
+# renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
+ARG RIPGREP_VERSION=14.1.1
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION=1.17.13
 
@@ -26,6 +28,7 @@ ARG NODE_MAJOR
 ARG NVIM_VERSION
 ARG RTK_VERSION
 ARG DELTA_VERSION
+ARG RIPGREP_VERSION
 ARG OPENCODE_VERSION
 ARG TARGETARCH
 
@@ -141,6 +144,19 @@ RUN case "${TARGETARCH}" in \
   && mv /tmp/delta-${DELTA_VERSION}-${DeltaArch}/delta /usr/local/bin/ \
   && chmod +x /usr/local/bin/delta \
   && rm -rf /tmp/delta*
+
+# Install ripgrep (fast search tool)
+RUN case "${TARGETARCH}" in \
+  amd64) RgArch="x86_64" ;; \
+  arm64) RgArch="aarch64" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /tmp/ripgrep.tar.gz \
+  "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-${RgArch}-unknown-linux-musl.tar.gz" \
+  && tar -xzf /tmp/ripgrep.tar.gz -C /tmp/ \
+  && mv /tmp/ripgrep-${RIPGREP_VERSION}-${RgArch}-unknown-linux-musl/rg /usr/local/bin/ \
+  && chmod +x /usr/local/bin/rg \
+  && rm -rf /tmp/ripgrep*
 
 # Git safe directory
 RUN git config --global --add safe.directory '*'
