@@ -122,12 +122,6 @@ RUN mkdir -p /etc/zsh \
   && chown -R dev:dev /home/dev /run/user/1000 \
   && chsh -s /bin/zsh dev
 
-# Install oh-my-zsh plugins (system-wide)
-RUN mkdir -p /usr/local/share/oh-my-zsh-plugins \
-  && git clone --depth 1 https://github.com/MichaelAqworka/zsh-you-should-use /usr/local/share/oh-my-zsh-plugins/you-should-use \
-  && git clone --depth 1 https://github.com/tomsawyer2006/zsh-bat /usr/local/share/oh-my-zsh-plugins/zsh-bat \
-  && git clone --depth 1 https://github.com/Aloxaf/fzf-tab /usr/local/share/oh-my-zsh-plugins/fzf-tab
-
 # Install rtk (LLM token optimizer)
 RUN case "${TARGETARCH}" in \
   amd64) RtkArch="x86_64-unknown-linux-musl" ;; \
