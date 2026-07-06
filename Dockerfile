@@ -34,6 +34,7 @@ ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
   TZ=${TZ} \
+  LANG=en_AU.UTF-8 \
   EDITOR=nvim \
   VISUAL=nvim \
   NPM_CONFIG_PREFIX=/home/dev/.local \
@@ -65,6 +66,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   inotify-tools \
   gpg \
   gpg-agent \
+  zoxide \
   && sed -i 's/^# *en_AU.UTF-8/en_AU.UTF-8/' /etc/locale.gen \
   && locale-gen en_AU.UTF-8 \
   && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -119,6 +121,12 @@ RUN mkdir -p /etc/zsh \
   && chown dev:dev /usr/local/bin \
   && chown -R dev:dev /home/dev /run/user/1000 \
   && chsh -s /bin/zsh dev
+
+# Install oh-my-zsh plugins (system-wide)
+RUN mkdir -p /usr/local/share/oh-my-zsh-plugins \
+  && git clone --depth 1 https://github.com/MichaelAqworka/zsh-you-should-use /usr/local/share/oh-my-zsh-plugins/you-should-use \
+  && git clone --depth 1 https://github.com/tomsawyer2006/zsh-bat /usr/local/share/oh-my-zsh-plugins/zsh-bat \
+  && git clone --depth 1 https://github.com/Aloxaf/fzf-tab /usr/local/share/oh-my-zsh-plugins/fzf-tab
 
 # Install rtk (LLM token optimizer)
 RUN case "${TARGETARCH}" in \
