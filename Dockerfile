@@ -14,6 +14,8 @@ ARG RTK_VERSION=v0.42.1
 ARG DELTA_VERSION=0.18.2
 # renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
 ARG RIPGREP_VERSION=15.1.0
+# renovate: datasource=github-releases depName=sharkdp/bat extractVersion=^v(?<version>.+)$
+ARG BAT_VERSION=0.26.1
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION=1.17.13
 
@@ -29,6 +31,7 @@ ARG NVIM_VERSION
 ARG RTK_VERSION
 ARG DELTA_VERSION
 ARG RIPGREP_VERSION
+ARG BAT_VERSION
 ARG OPENCODE_VERSION
 ARG TARGETARCH
 
@@ -159,6 +162,19 @@ RUN case "${TARGETARCH}" in \
   && mv /tmp/ripgrep-${RIPGREP_VERSION}-${RgArch}-${RgLibc}/rg /usr/local/bin/ \
   && chmod +x /usr/local/bin/rg \
   && rm -rf /tmp/ripgrep*
+
+# Install bat (syntax-highlighting cat)
+RUN case "${TARGETARCH}" in \
+  amd64) BatArch="x86_64-unknown-linux-musl" ;; \
+  arm64) BatArch="aarch64-unknown-linux-gnu" ;; \
+  *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+  esac \
+  && curl -fsSL -o /tmp/bat.tar.gz \
+  "https://github.com/sharkdp/bat/releases/download/v${BAT_VERSION}/bat-v${BAT_VERSION}-${BatArch}.tar.gz" \
+  && tar -xzf /tmp/bat.tar.gz -C /tmp/ \
+  && mv /tmp/bat-v${BAT_VERSION}-${BatArch}/bat /usr/local/bin/ \
+  && chmod +x /usr/local/bin/bat \
+  && rm -rf /tmp/bat*
 
 # Git safe directory
 RUN git config --global --add safe.directory '*'
