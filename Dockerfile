@@ -7,7 +7,7 @@ ARG DEBIAN_VERSION=trixie-20260518-slim
 ARG TZ=Australia/Sydney
 ARG NODE_MAJOR=22
 # renovate: datasource=github-releases depName=neovim/neovim extractVersion=^(?<version>.*)$
-ARG NVIM_VERSION=v0.12.2
+ARG NVIM_VERSION=v0.12.4
 # renovate: datasource=github-releases depName=rtk-ai/rtk extractVersion=^(?<version>.*)$
 ARG RTK_VERSION=v0.42.1
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
