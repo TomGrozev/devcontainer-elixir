@@ -21,6 +21,28 @@ on:
         description: "Additional image tag (optional)"
         required: false
         default: ""
+  workflow_call:
+    inputs:
+      ELIXIR_VERSION:
+        description: "Elixir version"
+        required: false
+        default: "1.19.4"
+      OTP_VERSION:
+        description: "Erlang/OTP version"
+        required: false
+        default: "28.5.0.1"
+      NVIM_VERSION:
+        description: "Neovim version"
+        required: false
+        default: "v0.12.2"
+      image_tag:
+        description: "Additional image tag (optional)"
+        required: false
+        default: ""
+      release_tag:
+        description: "Explicit semver release tag to publish (overrides tag detection)"
+        required: false
+        default: ""
 
 env:
   REGISTRY: ghcr.io
@@ -40,7 +62,9 @@ jobs:
       - name: Extract version tag
         id: version
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ -n "${{ inputs.release_tag }}" ]]; then
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
             echo "tag=" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,118 @@
+name: Scheduled Release
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine last tag and image-relevant changes
+        id: changes
+        run: |
+          set -euo pipefail
+          last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+          if [[ -z "$last_tag" ]]; then
+            echo "No existing tags; will cut an initial release."
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "last_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "last_tag=$last_tag" >> "$GITHUB_OUTPUT"
+          changed="$(git diff --name-only "${last_tag}..HEAD" -- Dockerfile su-wrapper.sh sudo-wrapper.sh)"
+          if [[ -z "$changed" ]]; then
+            echo "No image-relevant changes since $last_tag; skipping release."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect major dependency updates
+        id: major
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          last_tag="${{ steps.changes.outputs.last_tag }}"
+          old_df="$(git show "${last_tag}:Dockerfile" 2>/dev/null || true)"
+          new_df="$(cat Dockerfile)"
+          parse() {
+            awk '
+              /# renovate:/ { ren=1; next }
+              ren && /^ARG[[:space:]]+[A-Z_]+_VERSION=/ {
+                line=$0; sub(/^ARG[[:space:]]+/,"",line); split(line,a,"=");
+                var=a[1]; val=a[2]; gsub(/[[:space:]]/,"",val);
+                print var, val; ren=0; next
+              }
+              { ren=0 }
+            '
+          }
+          echo "$old_df" | parse > /tmp/old.txt
+          echo "$new_df" | parse > /tmp/new.txt
+          has_major=0
+          while read -r var newval; do
+            [[ -z "$var" ]] && continue
+            oldval="$(awk -v v="$var" '$1==v {print $2}' /tmp/old.txt)"
+            [[ -z "$oldval" ]] && continue
+            on="${oldval#v}"; nn="${newval#v}"
+            o_maj="${on%%.*}"; n_maj="${nn%%.*}"
+            if [[ "$o_maj" =~ ^[0-9]+$ ]] && [[ "$n_maj" =~ ^[0-9]+$ ]]; then
+              if (( n_maj > o_maj )); then
+                has_major=1
+                echo "::warning::Major dependency update detected: $var $oldval -> $newval"
+              fi
+            fi
+          done < /tmp/new.txt
+          echo "has_major=$has_major" >> "$GITHUB_OUTPUT"
+
+      - name: Compute next minor tag
+        id: bump
+        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
+        run: |
+          set -euo pipefail
+          last_tag="${{ steps.changes.outputs.last_tag }}"
+          if [[ -z "$last_tag" ]]; then
+            new_tag="v0.1.0"
+          else
+            v="${last_tag#v}"
+            maj="$(echo "$v" | cut -d. -f1)"
+            min="$(echo "$v" | cut -d. -f2)"
+            min=$(( ${min:-0} + 1 ))
+            new_tag="v${maj}.${min}.0"
+          fi
+          echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
+          echo "New release tag: $new_tag"
+
+      - name: Create git tag
+        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
+        run: |
+          set -euo pipefail
+          new_tag="${{ steps.bump.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$new_tag" -m "Automated release $new_tag"
+          git push origin "$new_tag"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build and push image
+        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
+        uses: ./.github/workflows/build.yml
+        with:
+          release_tag: ${{ steps.bump.outputs.tag }}
+
+      - name: Skip notice (major present)
+        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '1'
+        run: |
+          echo "::warning::Major dependency update(s) detected since last tag. Skipping automated release; please cut a manual release/tag."

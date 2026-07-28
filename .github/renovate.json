@@ -13,5 +13,21 @@
       "depNameTemplate": "{{{depName}}}",
       "extractVersionTemplate": "{{{extractVersion}}}"
     }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge patch updates",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Automerge minor updates so the scheduled release can deploy them",
+      "matchUpdateTypes": ["minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    }
   ]
 }
