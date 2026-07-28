@@ -17,7 +17,7 @@ ARG RIPGREP_VERSION=15.2.0
 # renovate: datasource=github-releases depName=sharkdp/bat extractVersion=^v(?<version>.+)$
 ARG BAT_VERSION=0.26.1
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
-ARG OPENCODE_VERSION=1.18.8
+ARG OPENCODE_VERSION=1.18.9
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}
 
