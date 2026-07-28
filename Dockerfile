@@ -11,7 +11,7 @@ ARG NVIM_VERSION=v0.12.4
 # renovate: datasource=github-releases depName=rtk-ai/rtk extractVersion=^(?<version>.*)$
 ARG RTK_VERSION=v0.42.1
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
-ARG DELTA_VERSION=0.18.2
+ARG DELTA_VERSION=0.19.2
 # renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
 ARG RIPGREP_VERSION=15.1.0
 # renovate: datasource=github-releases depName=sharkdp/bat extractVersion=^v(?<version>.+)$
