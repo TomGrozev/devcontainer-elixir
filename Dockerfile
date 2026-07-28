@@ -62,6 +62,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   locales \
   gcc \
   make \
+  pip \
+  pipx \
   openssh-client \
   libc-dev \
   build-essential \
