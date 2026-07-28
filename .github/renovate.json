@@ -5,7 +5,9 @@
     {
       "customType": "regex",
       "description": "Update versioned GitHub release downloads in Dockerfile",
-      "fileMatch": ["^Dockerfile$"],
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+) extractVersion=(?<extractVersion>[^\\s]+)\\nARG (?<varName>[A-Z_]+)_VERSION=(?<currentValue>[^\\s]+)"
       ],
