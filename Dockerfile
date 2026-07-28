@@ -13,7 +13,7 @@ ARG RTK_VERSION=v0.44.0
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.19.2
 # renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
-ARG RIPGREP_VERSION=15.1.0
+ARG RIPGREP_VERSION=15.2.0
 # renovate: datasource=github-releases depName=sharkdp/bat extractVersion=^v(?<version>.+)$
 ARG BAT_VERSION=0.26.1
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
