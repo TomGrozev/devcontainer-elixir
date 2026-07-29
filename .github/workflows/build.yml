@@ -1,8 +1,6 @@
 name: Build and Push
 
 on:
-  push:
-    tags: ["*"]
   workflow_dispatch:
     inputs:
       ELIXIR_VERSION:
@@ -25,22 +23,27 @@ on:
     inputs:
       ELIXIR_VERSION:
         description: "Elixir version"
+        type: string
         required: false
         default: "1.19.4"
       OTP_VERSION:
         description: "Erlang/OTP version"
+        type: string
         required: false
         default: "28.5.0.1"
       NVIM_VERSION:
         description: "Neovim version"
+        type: string
         required: false
         default: "v0.12.2"
       image_tag:
         description: "Additional image tag (optional)"
+        type: string
         required: false
         default: ""
       release_tag:
         description: "Explicit semver release tag to publish (overrides tag detection)"
+        type: string
         required: false
         default: ""
 
