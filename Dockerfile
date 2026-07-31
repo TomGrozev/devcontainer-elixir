@@ -72,6 +72,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   gpg \
   gpg-agent \
   zoxide \
+  tmux \
   && sed -i 's/^# *en_AU.UTF-8/en_AU.UTF-8/' /etc/locale.gen \
   && locale-gen en_AU.UTF-8 \
   && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
