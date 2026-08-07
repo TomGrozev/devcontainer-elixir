@@ -54,11 +54,11 @@ jobs:
 
       - name: Build and push
         uses: docker/bake-action@v7
+        env:
+          VERSION: ${{ steps.version.outputs.tag }}
+          GIT_SHA: ${{ github.sha }}
+          CREATED: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
         with:
           source: .
           targets: all
           push: true
-          set: |
-            VERSION=${{ steps.version.outputs.tag }}
-            GIT_SHA=${{ github.sha }}
-            CREATED=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
