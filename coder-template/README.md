@@ -1,6 +1,6 @@
-# Coder Template: Elixir Workspace (Kubernetes)
+# Coder Template: Multi-Language Workspace (Kubernetes)
 
-A [Coder](https://coder.com) template that deploys the [Elixir workspace image](../README.md) (`ghcr.io/tomgrozev/devcontainer-elixir`) on Kubernetes.
+A [Coder](https://coder.com) template that deploys a language-specific dev container on Kubernetes. The template takes a `language` parameter (choices: `elixir`, `rust`) and picks the right prebuilt image for it. The `image` parameter is an override that defaults to empty — leave it unset to auto-compute the image from `language`.
 
 This template runs a prebuilt image directly (no build step), giving you:
 
@@ -8,7 +8,7 @@ This template runs a prebuilt image directly (no build step), giving you:
 - **Smaller surface area** — fewer moving parts to debug
 - **Predictable behavior** — what you test locally is what runs in Coder
 
-The image is a full Elixir dev environment: Elixir, Erlang/OTP, Node.js, Neovim, `zsh` + `oh-my-zsh`, `fzf`, `delta`, `rtk`, and the `opencode` CLI/server. See the [image README](../README.md) for details.
+The image is a full dev environment for the chosen language. See the [image README](../README.md) for general details, or the **Languages** section below for what each image bundles.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ The image is a full Elixir dev environment: Elixir, Erlang/OTP, Node.js, Neovim,
 ## Quick start
 
 1. Create a new template in your Coder deployment, pointing at this directory.
-2. Optionally override variables (namespace) and parameters (image, repo, cpu, memory, volume size, storage class, dotfiles URI).
+2. Optionally override variables (namespace) and parameters (language, image, repo, cpu, memory, volume size, storage class, dotfiles URI).
 3. Create a new workspace from the template.
 
 ## Variables
@@ -37,7 +37,8 @@ Parameters are configurable from the Coder UI at workspace creation or (for muta
 
 | Parameter            | Default                                        | Mutable | Description                                                                      |
 | -------------------- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
-| `image`              | `ghcr.io/tomgrozev/devcontainer-elixir:latest` | yes     | Container image to deploy                                                        |
+| `language`           | `"elixir"`                                      | no      | Language stack to deploy. Choices: `elixir`, `rust`. Determines the default image. |
+| `image`              | `""`                                            | yes     | Container image override. Leave empty to auto-compute from `language`.          |
 | `repo`               | `""`                                           | yes     | Git repo URL to clone into `/home/dev/workspace` (leave empty for no auto-clone) |
 | `cpu`                | `1`                                            | yes     | CPU limit (cores)                                                                |
 | `memory`             | `2`                                            | yes     | Memory limit (GiB)                                                               |
@@ -50,7 +51,7 @@ Parameters are configurable from the Coder UI at workspace creation or (for muta
 | Resource                                  | Purpose                                                                                                                                                                                                      |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `coder_agent.main`                        | Registers the Coder agent in the workspace. Sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL` env vars from the workspace owner (falling back to `TomGrozev` / `dev@coder.com`). Works in `/home/dev/workspace`. |
-| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, bootstraps mix/hex/rebar, optionally clones a repo, applies dotfiles via `coder dotfiles`, then launches `opencode serve`. |
+| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, bootstraps mix/hex/rebar (Elixir workspaces only), optionally clones a repo, applies dotfiles via `coder dotfiles`, then launches `opencode serve`. |
 | `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts. Labelled with Coder workspace, user, and resource metadata.                                                                                             |
 | `kubernetes_deployment_v1.main`           | Runs the container rootless (UID/GID 1000, all capabilities dropped, seccomp `RuntimeDefault`), uses `Recreate` strategy, applies pod anti-affinity (preferred, hostname topology) against other `coder-workspace` pods, and requests 10m CPU / 512Mi memory as floor with `cpu`/`memory` parameters as the limits. |
 | `coder_app.opencode`                      | Proxies the in-image OpenCode API server via subdomain (`http://localhost:4096`). Includes a healthcheck at `/global/health` (5s interval, 6 attempts).                                                       |
@@ -92,13 +93,21 @@ You would then add logic to the agent `startup_script` to write the secret file 
 4. The main container runs `coder_agent.main.init_script` which bootstraps the agent and connects to the Coder server.
 5. The agent's `startup_script` runs first-time init:
    - Creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`.
-   - Bootstraps `mix local.hex` and `mix local.rebar` only if `/home/dev/.mix/archives` is missing (idempotent across restarts, cached on the PVC).
+   - For Elixir workspaces: bootstraps `mix local.hex` and `mix local.rebar` only if `/home/dev/.mix/archives` is missing (idempotent across restarts, cached on the PVC). Skipped for Rust workspaces.
    - Clones the `repo` parameter into `/home/dev/workspace` if set and not already a git repo.
    - Applies dotfiles via `coder dotfiles <dotfiles_uri> -y` only if `/home/dev/.coder/dotfiles` is not already a git checkout. Output is tee'd to `/home/dev/.dotfiles.log`. Dotfiles are inlined in the agent script (rather than using the `coder/dotfiles` module) so anything dotfiles write to `~/.zshenv` is guaranteed to be in place before `opencode serve` starts.
    - Launches `opencode serve --port 4096 --hostname 0.0.0.0` in the background (via `zsh -c` if `zsh` is on PATH, else directly) with logs written to `/tmp/opencode.log`.
 6. The `coder_app.opencode` resource registers a dashboard button that proxies to `http://localhost:4096` via a subdomain, with a healthcheck at `/global/health`.
 
 ## Customization
+
+### Choosing a language
+
+Set the `language` parameter to either `elixir` or `rust`. The template picks the right prebuilt image automatically — leave `image` empty to use the default.
+
+```hcl
+language = "rust"  # or "elixir"
+```
 
 ### Using a different image
 
@@ -107,7 +116,7 @@ Override the `image` parameter in the Coder UI. The image must:
 - Be runnable as a non-root user (UID 1000, GID 1000)
 - Have a writable home directory at `/home/dev`
 - Have `curl` and `sh` for the coder agent installer
-- Have `mix` and `hex` for the Elixir bootstrap
+- Include the toolchain expected for the chosen `language` (e.g. `mix`/`hex` for Elixir, `cargo`/`rustup` for Rust)
 
 ### Adding a repo to clone on startup
 
@@ -137,6 +146,15 @@ Check the workspace logs. The most common cause is the agent failing to download
 
 The PVC might be owned by a different UID from a previous session. The deployment sets `fs_group=1000` with `fs_group_change_policy=Always`, which should reclaim ownership. If it doesn't, run a one-off pod with `chown`, or delete the PVC and recreate the workspace.
 
-### Mix/hex not found
+### Elixir tooling not found
 
-The startup script runs `mix local.hex --force` on first start. If mix is not in the image, the bootstrap will fail. Ensure your image includes Elixir/Erlang.
+For Elixir workspaces, the startup script runs `mix local.hex --force` on first start. If mix is not in the image, the bootstrap will fail. Ensure your `image` includes Elixir/Erlang, or that the auto-computed image for your `language` is reachable.
+
+## Languages
+
+The prebuilt image for each `language` value bundles the following toolchain:
+
+- **Elixir**: Erlang/OTP, Elixir, mix, hex, inotify-tools
+- **Rust**: rustup, cargo, rustfmt, clippy, rust-analyzer, rust-src, pkg-config, libssl-dev
+
+Both images also include Node.js, Neovim, `zsh` + `oh-my-zsh`, `fzf`, `delta`, `rtk`, and the `opencode` CLI/server.

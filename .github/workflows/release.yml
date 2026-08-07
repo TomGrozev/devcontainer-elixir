@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -31,7 +31,7 @@ jobs:
             exit 0
           fi
           echo "last_tag=$last_tag" >> "$GITHUB_OUTPUT"
-          changed="$(git diff --name-only "${last_tag}..HEAD" -- Dockerfile su-wrapper.sh sudo-wrapper.sh)"
+          changed="$(git diff --name-only "${last_tag}..HEAD" -- images shared docker-bake.hcl)"
           if [[ -z "$changed" ]]; then
             echo "No image-relevant changes since $last_tag; skipping release."
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
@@ -39,41 +39,41 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Docker Buildx
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: docker/setup-buildx-action@v4
+
       - name: Detect major dependency updates
         id: major
         if: steps.changes.outputs.has_changes == 'true'
         run: |
           set -euo pipefail
           last_tag="${{ steps.changes.outputs.last_tag }}"
-          old_df="$(git show "${last_tag}:Dockerfile" 2>/dev/null || true)"
-          new_df="$(cat Dockerfile)"
-          parse() {
-            awk '
-              /# renovate:/ { ren=1; next }
-              ren && /^ARG[[:space:]]+[A-Z_]+_VERSION=/ {
-                line=$0; sub(/^ARG[[:space:]]+/,"",line); split(line,a,"=");
-                var=a[1]; val=a[2]; gsub(/[[:space:]]/,"",val);
-                print var, val; ren=0; next
-              }
-              { ren=0 }
-            '
-          }
-          echo "$old_df" | parse > /tmp/old.txt
-          echo "$new_df" | parse > /tmp/new.txt
+          if [[ -z "$last_tag" ]]; then
+            echo "has_major=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Read current versions from bake
+          bake_json="$(docker buildx bake elixir rust --print 2>/dev/null)"
+
+          # Check out the old tag's bake.hcl to compare versions
+          old_bake="$(git show "${last_tag}:docker-bake.hcl" 2>/dev/null || echo "{}")"
+
           has_major=0
-          while read -r var newval; do
-            [[ -z "$var" ]] && continue
-            oldval="$(awk -v v="$var" '$1==v {print $2}' /tmp/old.txt)"
-            [[ -z "$oldval" ]] && continue
-            on="${oldval#v}"; nn="${newval#v}"
+          for dep in NVIM_VERSION RTK_VERSION DELTA_VERSION RIPGREP_VERSION BAT_VERSION OPENCODE_VERSION RUST_VERSION; do
+            new_ver="$(echo "$bake_json" | jq -r ".target.elixir.args.${dep} // .target.rust.args.${dep} // \"\"")"
+            old_ver="$(echo "$old_bake" | grep -oP "${dep}\s*=\s*\"[^\"]*\"|${dep}\s*default\s*=\s*\"[^\"]*\"" | grep -oP '"[^"]*"' | tr -d '"' | head -1 || echo "")"
+            [[ -z "$new_ver" || -z "$old_ver" ]] && continue
+            on="${old_ver#v}"; nn="${new_ver#v}"
             o_maj="${on%%.*}"; n_maj="${nn%%.*}"
             if [[ "$o_maj" =~ ^[0-9]+$ ]] && [[ "$n_maj" =~ ^[0-9]+$ ]]; then
               if (( n_maj > o_maj )); then
                 has_major=1
-                echo "::warning::Major dependency update detected: $var $oldval -> $newval"
+                echo "::warning::Major dependency update detected: $dep $old_ver -> $new_ver"
               fi
             fi
-          done < /tmp/new.txt
+          done
           echo "has_major=$has_major" >> "$GITHUB_OUTPUT"
 
       - name: Compute next minor tag
@@ -94,15 +94,28 @@ jobs:
           echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
           echo "New release tag: $new_tag"
 
-      - name: Create git tag
+      - name: Refresh README version table
+        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
+        run: |
+          set -euo pipefail
+          ./scripts/gen-readme-versions.sh
+
+      - name: Commit README update and create git tag
         if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
         run: |
           set -euo pipefail
           new_tag="${{ steps.bump.outputs.tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage README if it was updated
+          if ! git diff --quiet README.md; then
+            git add README.md
+            git commit -m "docs: update version table for ${new_tag}"
+          fi
+
           git tag -a "$new_tag" -m "Automated release $new_tag"
-          git push origin "$new_tag"
+          git push origin "$new_tag" --follow-tags
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

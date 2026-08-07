@@ -4,9 +4,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update versioned GitHub release downloads in Dockerfile",
+      "description": "Update versioned GitHub release downloads in Dockerfiles",
       "managerFilePatterns": [
-        "/^Dockerfile$/"
+        "/^images\\/[^\\/]+\\/Dockerfile$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+) extractVersion=(?<extractVersion>[^\\s]+)\\nARG (?<varName>[A-Z_]+)_VERSION=(?<currentValue>[^\\s]+)"
@@ -14,9 +14,27 @@
       "datasourceTemplate": "{{{datasource}}}",
       "depNameTemplate": "{{{depName}}}",
       "extractVersionTemplate": "{{{extractVersion}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update version variables in docker-bake.hcl",
+      "managerFilePatterns": [
+        "/^docker-bake\\.hcl$/"
+      ],
+      "matchStrings": [
+        "\\/\\/ renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)( extractVersion=(?<extractVersion>[^\\s]+))?\\nvariable \"(?<varName>[^\"]+)\" \\{\\n\\s+default = \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "{{{datasource}}}",
+      "depNameTemplate": "{{{depName}}}",
+      "extractVersionTemplate": "{{{extractVersion}}}"
     }
   ],
   "packageRules": [
+    {
+      "description": "Group Elixir + OTP + Debian toolchain updates",
+      "matchPackageNames": ["hexpm/elixir", "erlang/otp"],
+      "groupName": "elixir-toolchain"
+    },
     {
       "description": "Automerge patch updates",
       "matchUpdateTypes": ["patch"],

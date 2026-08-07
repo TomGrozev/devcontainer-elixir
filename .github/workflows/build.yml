@@ -5,45 +5,8 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      ELIXIR_VERSION:
-        description: "Elixir version"
-        required: true
-        default: "1.19.4"
-      OTP_VERSION:
-        description: "Erlang/OTP version"
-        required: true
-        default: "28.5.0.1"
-      NVIM_VERSION:
-        description: "Neovim version"
-        required: true
-        default: "v0.12.2"
-      image_tag:
-        description: "Additional image tag (optional)"
-        required: false
-        default: ""
   workflow_call:
     inputs:
-      ELIXIR_VERSION:
-        description: "Elixir version"
-        type: string
-        required: false
-        default: "1.19.4"
-      OTP_VERSION:
-        description: "Erlang/OTP version"
-        type: string
-        required: false
-        default: "28.5.0.1"
-      NVIM_VERSION:
-        description: "Neovim version"
-        type: string
-        required: false
-        default: "v0.12.2"
-      image_tag:
-        description: "Additional image tag (optional)"
-        type: string
-        required: false
-        default: ""
       release_tag:
         description: "Explicit semver release tag to publish (overrides tag detection)"
         type: string
@@ -52,11 +15,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/devcontainer-elixir
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -69,12 +31,13 @@ jobs:
         id: version
         run: |
           if [[ -n "${{ inputs.release_tag }}" ]]; then
-            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            tag="${{ inputs.release_tag }}"
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            tag="${{ github.ref_name }}"
           else
-            echo "tag=" >> "$GITHUB_OUTPUT"
+            tag=""
           fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -89,27 +52,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }}
-            type=raw,value=${{ steps.version.outputs.tag }}-elixir-${{ inputs.ELIXIR_VERSION || '1.19.4' }}-otp-${{ inputs.OTP_VERSION || '28.5.0.1' }},enable=${{ steps.version.outputs.tag != '' }}
-            type=raw,value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
-            type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.image_tag != '' }}
-
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/bake-action@v7
         with:
-          context: .
-          platforms: linux/amd64,linux/arm64
+          source: .
+          targets: all
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            ELIXIR_VERSION=${{ inputs.ELIXIR_VERSION || '1.19.4' }}
-            OTP_VERSION=${{ inputs.OTP_VERSION || '28.5.0.1' }}
-            NVIM_VERSION=${{ inputs.NVIM_VERSION || 'v0.12.2' }}
+          set: |
+            *.VERSION=${{ steps.version.outputs.tag }}
+            *.GIT_SHA=${{ github.sha }}
+            *.CREATED=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}

@@ -1,50 +1,115 @@
-# Elixir Coder Workspace Image
+# Devcontainer Images
 
-Prebuilt multi-arch Docker image for Elixir development in Coder workspaces, published to `ghcr.io/tomgrozev/devcontainer-elixir`. The image bakes system-level tooling; user-level tooling (opencode, zsh plugins, asdf, mix/hex cache) is deferred to the Coder `coder-labs/opencode` module, the user's dotfiles repo, and the persistent `/home/dev` PVC. The Coder Terraform template lives in `./coder-template/`.
+Prebuilt multi-arch Docker images for Coder workspaces, published to GHCR. Each image layers a language toolchain on a shared base of system-level tooling. The Coder Terraform template lives in `./coder-template/`.
 
-![CI](https://github.com/tomgrozev/devcontainer-elixir/actions/workflows/build.yml/badge.svg)
+![CI](https://github.com/TomGrozev/devcontainers/actions/workflows/build.yml/badge.svg)
 
-## What's Baked
+## Images
 
-- Elixir + Erlang/OTP (hexpm base, configurable versions)
+| Image | Language | Contents |
+| --- | --- | --- |
+| `devcontainer-base` | — | System tools, CLI utilities, user setup |
+| `devcontainer-elixir` | Elixir | Base + Erlang/OTP + Elixir + mix/hex |
+| `devcontainer-rust` | Rust | Base + Rust (rustup) + cargo |
+
+All images run as user `dev` (UID/GID 1000), shell `/bin/zsh`, locale `en_AU.UTF-8`.
+
+## Shared Base (`devcontainer-base`)
+
+- Debian trixie-slim
 - Node.js 22 + GitHub CLI
-- Neovim (pinned v0.12.2, multi-arch, `/opt/nvim`)
-- rtk, delta, AgentAPI (system binaries on PATH)
-- apt packages: build-essential, inotify-tools, fzf, git, jq, gpg, openssh-client, locales, curl, ca-certificates
-- Rootless `su`/`sudo` passthrough wrappers (graceful degradation for the rootless pod securityContext)
-- User `dev` UID/GID 1000, shell `/bin/zsh`, sudoers entry, `/etc/zsh/zshrc` skeleton
-- Locale `en_AU.UTF-8`, timezone `Australia/Sydney` (configurable via `TZ`)
+- Neovim (multi-arch, `/opt/nvim`)
+- rtk, delta, ripgrep, bat, OpenCode (system binaries on PATH)
+- apt packages: build-essential, gcc, g++, git, jq, fzf, zsh, gpg, openssh-client, curl, ca-certificates, procps, sudo, unzip, zoxide, tmux, locales
+- Rootless `su`/`sudo` passthrough wrappers
+- User `dev` UID/GID 1000, `/etc/zsh/zshrc` skeleton
+
+## Elixir (`devcontainer-elixir`)
+
+- Erlang/OTP + Elixir via `COPY --from=hexpm/elixir`
+- `inotify-tools` for Phoenix live-reload
+- `MIX_HOME=/home/dev/.mix`, `HEX_HOME=/home/dev/.hex`
+- First-time mix/hex bootstrap on workspace start
+
+## Rust (`devcontainer-rust`)
+
+- Rust via `rustup-init` (minimal profile + `rustfmt`, `clippy`, `rust-analyzer`, `rust-src`)
+- `pkg-config` and `libssl-dev` for `openssl-sys` crates
+- `RUSTUP_HOME` and `CARGO_HOME` split for PVC compatibility
 
 ## What's Deferred
 
-- **opencode** — installed at first workspace start by the `coder-labs/opencode` module into `/home/dev/.opencode/bin` (persists on PVC)
-- **zsh + oh-my-zsh + powerlevel10k + fzf integration** — applied via the user's dotfiles repo (`github.com/TomGrozev/dots`)
+- **opencode** — installed at first workspace start by the `coder-labs/opencode` module
+- **zsh + oh-my-zsh + powerlevel10k + fzf** — applied via dotfiles
 - **asdf** — managed by dotfiles
-- **mix/hex/rebar bootstrap** — run once at first workspace start by the Coder template's `startup_script` (persists on PVC at `/home/dev/.mix`/`/home/dev/.hex`)
+- **Language-specific bootstraps** — run once on first workspace start via `/usr/local/share/devcontainer/bootstrap.sh`
 
-## Build Args
+## Tags
 
-| Arg | Default | Description |
-| --- | --- | --- |
-| `ELIXIR_VERSION` | `1.19.4` | Elixir version |
-| `OTP_VERSION` | `28.5.0.1` | Erlang/OTP version |
-| `DEBIAN_VERSION` | `trixie-20260518-slim` | Debian base image tag |
-| `TZ` | `Australia/Sydney` | System timezone |
-| `NODE_MAJOR` | `22` | Node.js major version |
-| `NVIM_VERSION` | `v0.12.2` | Neovim release tag |
-| `RTK_VERSION` | `v0.42.1` | rtk release tag |
-| `DELTA_VERSION` | `0.18.2` | delta release version |
-| `AGENTAPI_VERSION` | `v0.11.2` | AgentAPI release tag (used by the Coder opencode module) |
+Each image has a **train tag** (`vX.Y.Z`) — immutable, guarantees all three images share the same base layers from the same build run. **Toolchain tags** are moving and describe what's inside.
+
+### `devcontainer-base`
+
+| Tag | Immutable | Answers |
+| --- |:---:| --- |
+| `latest` | no | Newest base |
+| `vX.Y.Z` | yes | Base from train X.Y.Z |
+| `sha-<short>` | yes | Which commit built this |
+| `debian-trixie` | no | Newest base on this distro |
+
+### `devcontainer-elixir`
+
+| Tag | Immutable | Answers |
+| --- |:---:| --- |
+| `latest` | no | Newest Elixir image |
+| `vX.Y.Z` | yes | Same train as base + Rust |
+| `sha-<short>` | yes | Which commit built this |
+| `elixir-X.Y` | no | Latest patches on this Elixir minor |
+| `elixir-X.Y.Z-otp-X.Y.Z` | no | This exact toolchain, freshest tooling |
+| `vX.Y.Z-elixir-X.Y.Z-otp-X.Y.Z` | yes | Fully pinned + self-describing |
+
+### `devcontainer-rust`
+
+| Tag | Immutable | Answers |
+| --- |:---:| --- |
+| `latest` | no | Newest Rust image |
+| `vX.Y.Z` | yes | Same train as base + Elixir |
+| `sha-<short>` | yes | Which commit built this |
+| `rust-X.Y` | no | Latest patches on this Rust minor |
+| `rust-X.Y.Z` | no | This exact toolchain |
+| `vX.Y.Z-rust-X.Y.Z` | yes | Fully pinned + self-describing |
 
 ## Usage
 
-The Coder Terraform template in `./coder-template/` deploys this image as a rootless Kubernetes pod with a persistent home PVC, dotfiles, and opencode. See `coder-template/README.md` for setup instructions including the OpenCode user-secret one-liner.
+The Coder Terraform template in `./coder-template/` deploys the selected image as a rootless Kubernetes pod with a persistent home PVC, dotfiles, and opencode. See `coder-template/README.md` for setup instructions including the OpenCode user-secret one-liner.
 
-To rebuild the image manually: trigger **Actions > Build and Push > Run workflow** in GitHub. Override `ELIXIR_VERSION`, `OTP_VERSION`, `NVIM_VERSION`, or `image_tag` (custom tag suffix). The workflow builds `linux/amd64` + `linux/arm64` and pushes to GHCR.
+To rebuild images manually: trigger **Actions > Build and Push > Run workflow**. The workflow builds `linux/amd64` + `linux/arm64` and pushes all three images to GHCR.
+
+## Versions
+
+<!-- versions:start -->
+
+| Component | Version |
+| --- | --- |
+| Elixir | 1.20.3 |
+| Erlang/OTP | 28.5.0.5 |
+| Rust | 1.97.1 |
+| Debian | trixie-20260803-slim |
+| Neovim | v0.12.4 |
+| Node.js (major) | 24 |
+| rtk | v0.45.0 |
+| delta | 0.19.2 |
+| ripgrep | 15.2.0 |
+| bat | 0.26.1 |
+| OpenCode | 1.18.15 |
+
+<!-- versions:end -->
+
+*Generated at release time by `scripts/gen-readme-versions.sh`.*
 
 ## Notes
 
 - The `dev` user has UID/GID 1000.
-- The image runs rootless: pod securityContext drops all capabilities and forbids privilege escalation. The `su`/`sudo` wrappers passthrough commands as the current user.
+- Images run rootless: pod securityContext drops all capabilities and forbids privilege escalation. The `su`/`sudo` wrappers passthrough commands as the current user.
 - Persistent state lives under `/home/dev` (mounted on a PVC in Coder); rebuilds of the image do not affect workspace state.
-- This image was previously DevPod-oriented; the DevPod `devcontainer.json` entrypoint has been removed and the project is now Coder-only.
+- This project is Coder-only — it does not ship a `devcontainer.json` entrypoint.
