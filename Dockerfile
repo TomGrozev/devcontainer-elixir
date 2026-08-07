@@ -9,7 +9,7 @@ ARG NODE_MAJOR=22
 # renovate: datasource=github-releases depName=neovim/neovim extractVersion=^(?<version>.*)$
 ARG NVIM_VERSION=v0.12.4
 # renovate: datasource=github-releases depName=rtk-ai/rtk extractVersion=^(?<version>.*)$
-ARG RTK_VERSION=v0.44.1
+ARG RTK_VERSION=v0.45.0
 # renovate: datasource=github-releases depName=dandavison/delta extractVersion=^(?<version>.*)$
 ARG DELTA_VERSION=0.19.2
 # renovate: datasource=github-releases depName=BurntSushi/ripgrep extractVersion=^(?<version>.*)$
