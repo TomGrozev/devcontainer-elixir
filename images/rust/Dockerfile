@@ -5,6 +5,8 @@ ARG RUST_VERSION
 
 FROM ${BASE}
 
+USER root
+
 ARG RUST_VERSION
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -41,3 +43,5 @@ RUN chmod +x /usr/local/share/devcontainer/bootstrap.sh
 # Runtime override: redirect cargo's mutable state to the PVC
 ENV CARGO_HOME=/home/dev/.cargo \
     PATH="/usr/local/cargo/bin:/home/dev/.cargo/bin:${PATH}"
+
+USER dev
