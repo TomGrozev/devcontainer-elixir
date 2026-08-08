@@ -221,6 +221,12 @@ COPY shared/sudo-wrapper.sh /usr/bin/sudo
 RUN chmod 755 /usr/bin/sudo
 USER dev
 
+# Coder rootless pod support: allow the dev user to write default-workdir
+# profile scripts (used by coder_script in the Terraform template)
+USER root
+RUN chown root:dev /etc/profile.d && chmod 775 /etc/profile.d
+USER dev
+
 # Install OpenCode CLI (multi-arch)
 RUN case "${TARGETARCH}" in \
     amd64) OpenCodeArch="x64" ;; \
