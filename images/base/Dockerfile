@@ -17,6 +17,10 @@ ARG RIPGREP_VERSION
 ARG BAT_VERSION
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION
+# renovate: datasource=github-releases depName=zellij-org/zellij extractVersion=^v(?<version>.+)$
+ARG ZELLIJ_VERSION
+# renovate: datasource=github-releases depName=sharkdp/fd extractVersion=^v(?<version>.+)$
+ARG FD_VERSION
 
 FROM debian:${DEBIAN_VERSION}
 
@@ -30,6 +34,8 @@ ARG DELTA_VERSION
 ARG RIPGREP_VERSION
 ARG BAT_VERSION
 ARG OPENCODE_VERSION
+ARG ZELLIJ_VERSION
+ARG FD_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -68,7 +74,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     gpg \
     gpg-agent \
     zoxide \
-    tmux \
     && sed -i 's/^# *en_AU.UTF-8/en_AU.UTF-8/' /etc/locale.gen \
     && locale-gen en_AU.UTF-8 \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -172,6 +177,31 @@ RUN case "${TARGETARCH}" in \
     && mv /tmp/bat-v${BAT_VERSION}-${BatArch}/bat /usr/local/bin/ \
     && chmod +x /usr/local/bin/bat \
     && rm -rf /tmp/bat*
+
+# Install zellij (terminal workspace)
+RUN case "${TARGETARCH}" in \
+    amd64) ZellijArch="x86_64-unknown-linux-musl" ;; \
+    arm64) ZellijArch="aarch64-unknown-linux-gnu" ;; \
+    *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/zellij.tar.gz \
+    "https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-${ZellijArch}.tar.gz" \
+    && tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin/ \
+    && chmod +x /usr/local/bin/zellij \
+    && rm /tmp/zellij.tar.gz
+
+# Install fd (modern find)
+RUN case "${TARGETARCH}" in \
+    amd64) FdArch="x86_64-unknown-linux-musl" ;; \
+    arm64) FdArch="aarch64-unknown-linux-gnu" ;; \
+    *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/fd.tar.gz \
+    "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd-v${FD_VERSION}-${FdArch}.tar.gz" \
+    && tar -xzf /tmp/fd.tar.gz -C /tmp/ \
+    && mv /tmp/fd-v${FD_VERSION}-${FdArch}/fd /usr/local/bin/ \
+    && chmod +x /usr/local/bin/fd \
+    && rm -rf /tmp/fd*
 
 # Git safe directory
 RUN git config --global --add safe.directory '*'
