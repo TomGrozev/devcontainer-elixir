@@ -181,7 +181,7 @@ RUN case "${TARGETARCH}" in \
 # Install zellij (terminal workspace)
 RUN case "${TARGETARCH}" in \
     amd64) ZellijArch="x86_64-unknown-linux-musl" ;; \
-    arm64) ZellijArch="aarch64-unknown-linux-gnu" ;; \
+    arm64) ZellijArch="aarch64-unknown-linux-musl" ;; \
     *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac \
     && curl -fsSL -o /tmp/zellij.tar.gz \
