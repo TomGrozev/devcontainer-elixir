@@ -115,6 +115,7 @@ RUN mkdir -p /etc/zsh \
     && printf '%s\n' \
     'zstyle ":completion:*" menu select' \
     'autoload -Uz compinit && compinit' \
+    '[ -d "$HOME/workspace" ] && cd "$HOME/workspace"' \
     > /etc/zsh/zshrc \
     && chown root:root /etc/zsh/zshrc \
     && chmod 644 /etc/zsh/zshrc \
@@ -219,12 +220,6 @@ USER root
 RUN mv /usr/bin/sudo /usr/bin/sudo.real
 COPY shared/sudo-wrapper.sh /usr/bin/sudo
 RUN chmod 755 /usr/bin/sudo
-USER dev
-
-# Coder rootless pod support: allow the dev user to write default-workdir
-# profile scripts (used by coder_script in the Terraform template)
-USER root
-RUN chown root:dev /etc/profile.d && chmod 775 /etc/profile.d
 USER dev
 
 # Install OpenCode CLI (multi-arch)
