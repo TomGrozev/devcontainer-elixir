@@ -200,10 +200,11 @@ resource "coder_agent" "main" {
       coder dotfiles "${data.coder_parameter.dotfiles_uri.value}" -y 2>&1 | tee /home/dev/.dotfiles.log || true
 
     # Start the OpenCode API server for Coder app proxying
+    cd /home/dev/workspace
     if command -v zsh >/dev/null 2>&1; then
-      nohup zsh -c 'echo "Starting opencode with config from: $OPENCODE_CONFIG" && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
+      nohup zsh -c 'cd /home/dev/workspace && echo "Starting opencode with config from: $OPENCODE_CONFIG" && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
     else
-      nohup opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 &
+      nohup sh -c 'cd /home/dev/workspace && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
     fi
   EOT
 }
@@ -338,8 +339,8 @@ resource "kubernetes_deployment_v1" "main" {
 
           resources {
             requests = {
-              cpu    = "10m"
-              memory = "512Mi"
+              cpu    = "1"
+              memory = "2Gi"
             }
             limits = {
               cpu    = data.coder_parameter.cpu.value
