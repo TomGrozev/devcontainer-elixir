@@ -21,6 +21,8 @@ ARG OPENCODE_VERSION
 ARG OMP_VERSION
 # renovate: datasource=github-releases depName=zellij-org/zellij extractVersion=^v(?<version>.+)$
 ARG ZELLIJ_VERSION
+# renovate: datasource=github-releases depName=oven-sh/bun extractVersion=^bun-v(?<version>.+)$
+ARG BUN_VERSION
 # renovate: datasource=github-releases depName=sharkdp/fd extractVersion=^v(?<version>.+)$
 ARG FD_VERSION
 
@@ -38,6 +40,7 @@ ARG BAT_VERSION
 ARG OPENCODE_VERSION
 ARG OMP_VERSION
 ARG ZELLIJ_VERSION
+ARG BUN_VERSION
 ARG FD_VERSION
 ARG TARGETARCH
 
@@ -130,6 +133,19 @@ RUN mkdir -p /etc/zsh \
     && chown dev:dev /usr/local/bin \
     && chown -R dev:dev /home/dev /run/user/1000 \
     && chsh -s /bin/zsh dev
+
+# Install bun (JavaScript runtime & toolkit)
+RUN case "${TARGETARCH}" in \
+    amd64) BunArch="x64" ;; \
+    arm64) BunArch="aarch64" ;; \
+    *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/bun.zip \
+    "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${BunArch}.zip" \
+    && unzip -o /tmp/bun.zip -d /tmp/ \
+    && mv /tmp/bun-linux-${BunArch}/bun /usr/local/bin/ \
+    && chmod +x /usr/local/bin/bun \
+    && rm -rf /tmp/bun*
 
 # Install rtk (LLM token optimizer)
 RUN case "${TARGETARCH}" in \

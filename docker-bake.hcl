@@ -61,6 +61,10 @@ variable "OMP_VERSION" {
 variable "ZELLIJ_VERSION" {
   default = "0.44.3"
 }
+// renovate: datasource=github-releases depName=oven-sh/bun extractVersion=^bun-v(?<version>.+)$
+variable "BUN_VERSION" {
+  default = "1.3.14"
+}
 // renovate: datasource=github-releases depName=sharkdp/fd extractVersion=^v(?<version>.+)$
 variable "FD_VERSION" {
   default = "10.4.2"
@@ -91,6 +95,7 @@ function "common_args" {
     BAT_VERSION      = "${BAT_VERSION}"
     OPENCODE_VERSION = "${OPENCODE_VERSION}"
     OMP_VERSION      = "${OMP_VERSION}"
+    BUN_VERSION      = "${BUN_VERSION}"
     ZELLIJ_VERSION  = "${ZELLIJ_VERSION}"
     FD_VERSION      = "${FD_VERSION}"
   }
