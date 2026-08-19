@@ -19,7 +19,7 @@ All images run as user `dev` (UID/GID 1000), shell `/bin/zsh`, locale `en_AU.UTF
 - Debian trixie-slim
 - Node.js 22 + GitHub CLI
 - Neovim (multi-arch, `/opt/nvim`)
-- rtk, delta, ripgrep, bat, OpenCode (system binaries on PATH)
+- rtk, delta, ripgrep, bat, OpenCode, omp (system binaries on PATH)
 - apt packages: build-essential, gcc, g++, git, jq, fzf, zsh, gpg, openssh-client, curl, ca-certificates, procps, sudo, unzip, zoxide, tmux, locales
 - Rootless `su`/`sudo` passthrough wrappers
 - User `dev` UID/GID 1000, `/etc/zsh/zshrc` skeleton
@@ -88,7 +88,6 @@ To rebuild images manually: trigger **Actions > Build and Push > Run workflow**.
 ## Versions
 
 <!-- versions:start -->
-
 | Component | Version |
 | --- | --- |
 | Elixir | 1.20.3 |
@@ -102,7 +101,7 @@ To rebuild images manually: trigger **Actions > Build and Push > Run workflow**.
 | ripgrep | 15.2.0 |
 | bat | 0.26.1 |
 | OpenCode | 1.18.15 |
-
+| omp | 17.3.7 |
 <!-- versions:end -->
 
 *Generated at release time by `scripts/gen-readme-versions.sh`.*

@@ -23,6 +23,7 @@ delta=$(echo "$json" | jq -r '.target.elixir.args.DELTA_VERSION // "?"')
 ripgrep=$(echo "$json" | jq -r '.target.elixir.args.RIPGREP_VERSION // "?"')
 bat=$(echo "$json" | jq -r '.target.elixir.args.BAT_VERSION // "?"')
 opencode=$(echo "$json" | jq -r '.target.elixir.args.OPENCODE_VERSION // "?"')
+omp=$(echo "$json" | jq -r '.target.elixir.args.OMP_VERSION // "?"')
 
 table="| Component | Version |
 | --- | --- |
@@ -36,7 +37,8 @@ table="| Component | Version |
 | delta | ${delta} |
 | ripgrep | ${ripgrep} |
 | bat | ${bat} |
-| OpenCode | ${opencode} |"
+| OpenCode | ${opencode} |
+| omp | ${omp} |"
 
 # Use sed to replace everything between the markers
 if grep -q '<!-- versions:start -->' README.md; then

@@ -53,6 +53,10 @@ variable "BAT_VERSION" {
 variable "OPENCODE_VERSION" {
   default = "1.18.15"
 }
+// renovate: datasource=github-releases depName=can1357/oh-my-pi extractVersion=^v(?<version>.+)$
+variable "OMP_VERSION" {
+  default = "17.3.7"
+}
 // renovate: datasource=github-releases depName=zellij-org/zellij extractVersion=^v(?<version>.+)$
 variable "ZELLIJ_VERSION" {
   default = "0.44.3"
@@ -86,6 +90,7 @@ function "common_args" {
     RIPGREP_VERSION  = "${RIPGREP_VERSION}"
     BAT_VERSION      = "${BAT_VERSION}"
     OPENCODE_VERSION = "${OPENCODE_VERSION}"
+    OMP_VERSION      = "${OMP_VERSION}"
     ZELLIJ_VERSION  = "${ZELLIJ_VERSION}"
     FD_VERSION      = "${FD_VERSION}"
   }

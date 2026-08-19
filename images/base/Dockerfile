@@ -17,6 +17,8 @@ ARG RIPGREP_VERSION
 ARG BAT_VERSION
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.+)$
 ARG OPENCODE_VERSION
+# renovate: datasource=github-releases depName=can1357/oh-my-pi extractVersion=^v(?<version>.+)$
+ARG OMP_VERSION
 # renovate: datasource=github-releases depName=zellij-org/zellij extractVersion=^v(?<version>.+)$
 ARG ZELLIJ_VERSION
 # renovate: datasource=github-releases depName=sharkdp/fd extractVersion=^v(?<version>.+)$
@@ -34,6 +36,7 @@ ARG DELTA_VERSION
 ARG RIPGREP_VERSION
 ARG BAT_VERSION
 ARG OPENCODE_VERSION
+ARG OMP_VERSION
 ARG ZELLIJ_VERSION
 ARG FD_VERSION
 ARG TARGETARCH
@@ -234,5 +237,16 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/opencode \
     && rm /tmp/opencode.tar.gz \
     && opencode --version
+
+# Install omp (Oh My Pi coding agent, multi-arch)
+RUN case "${TARGETARCH}" in \
+    amd64) OmpArch="x64" ;; \
+    arm64) OmpArch="arm64" ;; \
+    *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /usr/local/bin/omp \
+    "https://github.com/can1357/oh-my-pi/releases/download/v${OMP_VERSION}/omp-linux-${OmpArch}" \
+    && chmod +x /usr/local/bin/omp \
+    && omp --version
 
 WORKDIR /home/dev/workspace
