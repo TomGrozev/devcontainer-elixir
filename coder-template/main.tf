@@ -199,13 +199,25 @@ resource "coder_agent" "main" {
     GIT_SSH_COMMAND="$GIT_SSH_COMMAND -o StrictHostKeyChecking=accept-new" \
       coder dotfiles "${data.coder_parameter.dotfiles_uri.value}" -y 2>&1 | tee /home/dev/.dotfiles.log || true
 
-    # Start the OpenCode API server for Coder app proxying
-    cd /home/dev/workspace
-    if command -v zsh >/dev/null 2>&1; then
-      nohup zsh -c 'cd /home/dev/workspace && echo "Starting opencode with config from: $OPENCODE_CONFIG" && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
-    else
-      nohup sh -c 'cd /home/dev/workspace && opencode serve --port 4096 --hostname 0.0.0.0' > /tmp/opencode.log 2>&1 &
-    fi
+    # Install the Tau web-mirror extension for omp (Pi fork). Tau runs as an
+    # omp extension: it starts an HTTP+WS server on :3001 inside the omp
+    # process, mirrored in the browser via the coder_app.tau resource below.
+    # Idempotent (writes to ~/.pi/agent/settings.json on the PVC); non-fatal
+    # and stdin-closed so any prompt fails fast instead of hanging startup.
+    omp install npm:tau-mirror </dev/null 2>/tmp/tau-install.log || true
+
+    # Install captain-miao (miao) — a session manager for coding agents. Used
+    # by the coder_app.start_omp resource to launch omp on demand via
+    # `miao launch pi`, which wraps the agent with tracking hooks. The npm
+    # package downloads a prebuilt native binary; NPM_CONFIG_PREFIX puts it in
+    # ~/.local, so `miao` lands in ~/.local/bin (already on PATH).
+    npm install -g @hyperlogue/captain-miao </dev/null 2>/tmp/miao-install.log || true
+
+    # captain-miao's `pi` backend calls the `pi` binary. omp is a Pi fork that
+    # installs as `omp` and supports the same `-e` extension flag, so symlink
+    # pi -> omp on PATH. miao's tracking hook (loaded via -e) and the tau-mirror
+    # extension (loaded via settings.json) coexist within the same omp process.
+    ln -sf "$(command -v omp)" /home/dev/.local/bin/pi
   EOT
 }
 
@@ -399,6 +411,40 @@ resource "coder_app" "opencode" {
     interval  = 5
     threshold = 6
   }
+}
+
+# Tau: browser mirror of the omp (Pi) terminal session. The Tau extension's
+# HTTP+WS server on :3001 is started by omp's session_start event — so this
+# app is healthy only while an omp instance launched via start_omp is running.
+resource "coder_app" "tau" {
+  agent_id     = coder_agent.main.id
+  slug         = "tau"
+  display_name = "Tau"
+  url          = "http://localhost:3001"
+  subdomain    = true
+  share        = "owner"
+  open_in      = "tab"
+
+  healthcheck {
+    url       = "http://localhost:3001/api/health"
+    interval  = 5
+    threshold = 6
+  }
+}
+
+# Start omp: opens a terminal in the workspace UI and launches an omp instance
+# via captain-miao (`miao launch pi`). omp starts the Tau extension's HTTP+WS
+# server on :3001, making the Tau app above reachable. The guard checks
+# :3001 first so clicking the button twice doesn't start a second instance.
+# --yolo auto-approves tool calls — Tau's browser UI has no approval surface,
+# so without it the agent deadlocks on the first permission prompt.
+resource "coder_app" "start_omp" {
+  agent_id     = coder_agent.main.id
+  slug         = "start-omp"
+  display_name = "Start omp"
+  icon         = "/icon/react.svg"
+  command      = "if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then echo \"omp is already running — open the Tau app.\"; sleep 5; else miao launch pi /home/dev/workspace --yolo; fi"
+  share        = "owner"
 }
 
 # Refresh dotfiles: opens a terminal in the workspace UI and re-runs
