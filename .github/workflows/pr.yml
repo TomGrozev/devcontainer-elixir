@@ -27,20 +27,20 @@ jobs:
       - name: Smoke test — shared binaries
         run: |
           set -e
-          docker run --rm devcontainer-base:latest nvim --version
-          docker run --rm devcontainer-base:latest rg --version
-          docker run --rm devcontainer-base:latest bat --version
-          docker run --rm devcontainer-base:latest delta --version
-          docker run --rm devcontainer-base:latest rtk --version
-          docker run --rm devcontainer-base:latest opencode --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest nvim --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest rg --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest bat --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest delta --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest rtk --version
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest opencode --version
           echo "=== All shared binaries resolved ==="
 
       - name: Smoke test — user + sudo/su wrappers
         run: |
           set -e
-          docker run --rm devcontainer-base:latest id dev
-          docker run --rm devcontainer-base:latest sudo true
-          docker run --rm devcontainer-base:latest su -c true
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest id dev
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest sudo true
+          docker run --rm ghcr.io/tomgrozev/devcontainer-base:latest su -c true
           echo "=== User and wrapper tests passed ==="
 
       - name: Build Elixir image (single arch, load into Docker)
@@ -55,10 +55,10 @@ jobs:
       - name: Smoke test — Elixir toolchain
         run: |
           set -e
-          docker run --rm devcontainer-elixir:latest elixir -v
-          docker run --rm devcontainer-elixir:latest erl -noshell -eval 'crypto:start(),halt()'
-          docker run --rm devcontainer-elixir:latest mix local.hex --force
-          docker run --rm devcontainer-elixir:latest mix help
+          docker run --rm ghcr.io/tomgrozev/devcontainer-elixir:latest elixir -v
+          docker run --rm ghcr.io/tomgrozev/devcontainer-elixir:latest erl -noshell -eval 'crypto:start(),halt()'
+          docker run --rm ghcr.io/tomgrozev/devcontainer-elixir:latest mix local.hex --force
+          docker run --rm ghcr.io/tomgrozev/devcontainer-elixir:latest mix help
           echo "=== Elixir toolchain verified ==="
 
       - name: Build Rust image (single arch, load into Docker)
@@ -73,7 +73,7 @@ jobs:
       - name: Smoke test — Rust toolchain
         run: |
           set -e
-          docker run --rm devcontainer-rust:latest rustc -V
-          docker run --rm devcontainer-rust:latest cargo -V
-          docker run --rm devcontainer-rust:latest cargo new /tmp/smoke-test && cd /tmp/smoke-test && cargo b && cd / && rm -rf /tmp/smoke-test
+          docker run --rm ghcr.io/tomgrozev/devcontainer-rust:latest rustc -V
+          docker run --rm ghcr.io/tomgrozev/devcontainer-rust:latest cargo -V
+          docker run --rm ghcr.io/tomgrozev/devcontainer-rust:latest cargo new /tmp/smoke-test && cd /tmp/smoke-test && cargo b && cd / && rm -rf /tmp/smoke-test
           echo "=== Rust toolchain verified ==="
