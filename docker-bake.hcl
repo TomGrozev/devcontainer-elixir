@@ -69,6 +69,10 @@ variable "BUN_VERSION" {
 variable "FD_VERSION" {
   default = "10.4.2"
 }
+// renovate: datasource=github-releases depName=hyperlogue/captain-miao extractVersion=^v(?<version>.+)$
+variable "MIAO_VERSION" {
+  default = "0.6.0"
+}
 // renovate: datasource=rust-version depName=rust
 variable "RUST_VERSION" {
   default = "1.98.0"
@@ -96,8 +100,9 @@ function "common_args" {
     OPENCODE_VERSION = "${OPENCODE_VERSION}"
     OMP_VERSION      = "${OMP_VERSION}"
     BUN_VERSION      = "${BUN_VERSION}"
-    ZELLIJ_VERSION  = "${ZELLIJ_VERSION}"
-    FD_VERSION      = "${FD_VERSION}"
+    ZELLIJ_VERSION   = "${ZELLIJ_VERSION}"
+    FD_VERSION       = "${FD_VERSION}"
+    MIAO_VERSION     = "${MIAO_VERSION}"
   }
 }
 

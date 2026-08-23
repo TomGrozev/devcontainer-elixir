@@ -37,67 +37,102 @@ Parameters are configurable from the Coder UI at workspace creation or (for muta
 
 | Parameter            | Default                                        | Mutable | Description                                                                      |
 | -------------------- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
-| `language`           | `"elixir"`                                      | no      | Language stack to deploy. Choices: `elixir`, `rust`. Determines the default image. |
+| `language`           | `"elixir"`                                      | yes     | Language stack to deploy. Choices: `elixir`, `rust`. Determines the default image. |
 | `image`              | `""`                                            | yes     | Container image override. Leave empty to auto-compute from `language`.          |
 | `repo`               | `""`                                           | yes     | Git repo URL to clone into `/home/dev/workspace` (leave empty for no auto-clone) |
-| `cpu`                | `1`                                            | yes     | CPU limit (cores)                                                                |
-| `memory`             | `2`                                            | yes     | Memory limit (GiB)                                                               |
+| `cpu`                | `4`                                            | yes     | CPU limit (cores)                                                                |
+| `memory`             | `8`                                            | yes     | Memory limit (GiB)                                                               |
 | `home_volume_size`   | `20`                                           | no      | `/home/dev` volume size (GiB)                                                    |
 | `storage_class_name` | `""`                                           | no      | Kubernetes StorageClass (empty = cluster default)                                |
 | `dotfiles_uri`       | `https://github.com/TomGrozev/dots`            | yes     | Git repo URL containing dotfiles, applied by the startup script and the Refresh Dotfiles button |
+| `git_name`           | `""`                                           | yes     | Git user name for commits. Leave empty to use workspace owner name or existing git config. |
+| `git_email`          | `""`                                           | yes     | Git email for commits. Leave empty to use workspace owner email or existing git config. |
 
 ## What this template uses
 
-| Resource                                  | Purpose                                                                                                                                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `coder_agent.main`                        | Registers the Coder agent in the workspace. Sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL` env vars from the workspace owner (falling back to `TomGrozev` / `dev@coder.com`). Works in `/home/dev/workspace`. |
-| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, bootstraps mix/hex/rebar (Elixir workspaces only), optionally clones a repo, applies dotfiles via `coder dotfiles`, then launches `opencode serve`. |
-| `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts. Labelled with Coder workspace, user, and resource metadata.                                                                                             |
-| `kubernetes_deployment_v1.main`           | Runs the container rootless (UID/GID 1000, all capabilities dropped, seccomp `RuntimeDefault`), uses `Recreate` strategy, applies pod anti-affinity (preferred, hostname topology) against other `coder-workspace` pods, and requests 10m CPU / 512Mi memory as floor with `cpu`/`memory` parameters as the limits. |
-| `coder_app.opencode`                      | Proxies the in-image OpenCode API server via subdomain (`http://localhost:4096`). Includes a healthcheck at `/global/health` (5s interval, 6 attempts).                                                       |
-| `coder_app.refresh_dotfiles`              | A workspace-app button that re-runs `coder dotfiles` against the current `dotfiles_uri` value to pull the latest dotfiles and re-apply.                                                                      |
+| Resource                                  | Purpose                                                                                                                                                                                                                                            |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `coder_agent.main`                        | Registers the Coder agent in the workspace. Works in `/home/dev/workspace`.                                                                                                                                                                        |
+| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, sets global git identity if not already configured, marks the workspace as a safe git directory, runs the language-specific `bootstrap.sh` if present, clones a repo if set, applies dotfiles via `coder dotfiles`, and installs the `tau-mirror` omp extension. captain-miao config is dotfiles-owned. |
+| `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts. Labelled with Coder workspace, user, and resource metadata.                                                                                                                                  |
+| `kubernetes_deployment_v1.main`           | Runs the container rootless (UID/GID 1000, all capabilities dropped, seccomp `RuntimeDefault`), uses `Recreate` strategy, applies pod anti-affinity, and sets CPU/memory requests and limits from the `cpu`/`memory` parameters.                    |
+| `coder_script.zellij_web`                 | On-start script that mints a zellij web login token once (stored on the PVC) and daemonizes `zellij web` on loopback `:8082` for mobile browser access.                                                                                            |
+| `coder_app.opencode`                      | Proxies the opencode server via subdomain (`http://localhost:4096`). Healthy only while a session started by the Start opencode button is running. Healthcheck at `/global/health`.                                                                 |
+| `coder_app.tau`                           | Proxies the omp Tau web mirror via subdomain (`http://localhost:3001`). Healthy only while the omp session started by the Start omp button is running. Healthcheck at `/api/health`.                                                                |
+| `coder_app.start_omp`                     | Button: launches a pooled omp session via `miao-server attach --background --cmd` with Tau enabled (idempotent — one web-enabled omp at a time).                                                                                                  |
+| `coder_app.start_opencode`                | Button: launches opencode (TUI + server in one process) in the miao pool, binding its server to loopback `:4096` (idempotent).                                                                                                                    |
+| `coder_app.zellij_web`                    | Proxies the zellij web terminal via subdomain (`http://localhost:8082`); lands on zellij's session picker. First visit asks for a login token.                                                                                                     |
+| `coder_app.zellij_token`                  | Button: prints the zellij web login token minted at boot (zellij never re-displays it).                                                                                                                                                            |
+| `coder_app.refresh_dotfiles`              | A workspace-app button that re-runs `coder dotfiles` against the current `dotfiles_uri` value to pull the latest dotfiles and re-apply.                                                                                                            |
 
 ## Agent environment variables
 
-The agent sets the following environment variables in the container, derived from the Coder workspace owner:
+The following environment variables are set in the workspace container:
 
-| Variable              | Source                                                        |
-| --------------------- | ------------------------------------------------------------- |
-| `GIT_AUTHOR_NAME`     | `workspace_owner.full_name` → `workspace_owner.name` → `TomGrozev` |
-| `GIT_AUTHOR_EMAIL`    | `workspace_owner.email` → `dev@coder.com`                     |
-| `GIT_COMMITTER_NAME`  | Same as `GIT_AUTHOR_NAME`                                      |
-| `GIT_COMMITTER_EMAIL` | Same as `GIT_AUTHOR_EMAIL`                                     |
+| Variable         | Value                          | Purpose                                                              |
+| ---------------- | ------------------------------ | -------------------------------------------------------------------- |
+| `CODER_AGENT_TOKEN` | `coder_agent.main.token`     | Coder agent authentication (required).                               |
+| `DEVCONTAINER`   | `"true"`                       | Container detection used by dotfiles (e.g. permissive opencode permission tier). |
+| `TAU_DISABLED`   | `"1"`                          | Disables the Tau web mirror by default so only the Start omp button's session binds `:3001`. The button overrides this per-launch with `TAU_DISABLED=0`. |
+| `TAU_HOST`       | `"127.0.0.1"`                  | Binds Tau to loopback (the Coder agent proxies it from inside the pod netns). |
 
 The agent's working directory is `/home/dev/workspace`.
 
-## OpenCode setup
+## Sessions and mobile access
 
-### Authentication
+Both coding agents run server-side so a session started from the laptop keeps running when the laptop closes, and is reachable from a phone on the LAN through the Coder dashboard.
 
-This template does **not** include any authentication handling in `main.tf`. The OpenCode server starts unauthenticated by default.
+- **omp** — the **Start omp** button launches a pooled omp session (owned by captain-miao's daemon, so it survives every client disconnect) and its **Tau** web mirror on `:3001`. Open the **Tau** app on the phone to drive it. **Start opencode** and **OpenCode** are the opencode equivalents.
+- **opencode** — the **Start opencode** button runs `opencode` with `--hostname 127.0.0.1 --port 4096` inside the pool, so the **OpenCode** web app and a laptop `opencode attach http://localhost:4096` both talk to the same session store and can hand off mid-task (including permission approvals).
+- **Zellij (terminal)** — the **Zellij** app is a full mobile terminal served by zellij web on `:8082`. On first visit, copy the token from the **Zellij token** button (one paste per device, remembered for ~4 weeks).
 
-If you need authenticated OpenCode usage, extend the template yourself. One approach is to use a Coder user secret plus a write step in the startup script:
+Everything serving over HTTP binds loopback only and is reached through Coder's authenticated subdomain proxy — nothing is exposed directly on the network.
 
-```bash
-# Create the secret before starting the workspace
-cat auth.json | coder secret create opencode-auth --file ~/.local/share/opencode/auth.json
+## captain-miao config
+
+The shared config ships in dotfiles at `~/.config/captain-miao/config.toml` (symlinked by `install.sh`); the template no longer writes it:
+
+```toml
+[launcher]
+default_agent = "omp"
+
+[terminal]
+sessions_layout = "per-tab"
+
+[remote]
+on_window_close = "detach"
 ```
 
-You would then add logic to the agent `startup_script` to write the secret file before `opencode serve` starts. This is an extension point — the template ships without any auth wiring so you can tailor it to your environment.
+- `default_agent = "omp"` sets the backend new sessions (`o`/`O`) open with.
+- `sessions_layout = "per-tab"` gives each session its own tab.
+- `on_window_close = "detach"` makes closing a dashboard window detach rather than kill the session.
+
+**Pooled mode is per-host, not shared.** `pooled` is deliberately absent from the shared file. Dev servers want pooling (sessions survive disconnects and are steal-able from a remote dashboard); laptops stay direct-local. The dotfiles' `install.sh` enables it only inside the workspace, writing:
+
+```json
+{"prefs": {"pooled": true}}
+```
+
+to `~/.local/state/captain-miao/dashboard-overrides.json` when `DEVCONTAINER=true`. That file is read only by the dashboard and overlays the config without touching the symlinked `config.toml`. A parse error anywhere in `config.toml` reverts *every* section to defaults — keep it valid.
+
+The `miao` and `miao-server` binaries ship in the image (pinned in `docker-bake.hcl`).
 
 ## How it works
 
 1. Coder applies this Terraform against your Kubernetes cluster.
 2. A `PersistentVolumeClaim` is created in the configured namespace.
 3. A `Deployment` is created that runs the prebuilt image as a rootless container (UID 1000, all capabilities dropped, seccomp `RuntimeDefault`).
-4. The main container runs `coder_agent.main.init_script` which bootstraps the agent and connects to the Coder server.
+4. The main container runs `coder_agent.main.init_script`, which bootstraps the agent and connects to the Coder server.
 5. The agent's `startup_script` runs first-time init:
    - Creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`.
-   - For Elixir workspaces: bootstraps `mix local.hex` and `mix local.rebar` only if `/home/dev/.mix/archives` is missing (idempotent across restarts, cached on the PVC). Skipped for Rust workspaces.
+   - Sets global git identity only if not already configured.
+   - Marks `/home/dev/workspace` as a safe git directory.
+   - Runs the language-specific `bootstrap.sh` from `/usr/local/share/devcontainer/` if present.
    - Clones the `repo` parameter into `/home/dev/workspace` if set and not already a git repo.
-   - Applies dotfiles via `coder dotfiles <dotfiles_uri> -y` only if `/home/dev/.coder/dotfiles` is not already a git checkout. Output is tee'd to `/home/dev/.dotfiles.log`. Dotfiles are inlined in the agent script (rather than using the `coder/dotfiles` module) so anything dotfiles write to `~/.zshenv` is guaranteed to be in place before `opencode serve` starts.
-   - Launches `opencode serve --port 4096 --hostname 0.0.0.0` in the background (via `zsh -c` if `zsh` is on PATH, else directly) with logs written to `/tmp/opencode.log`.
-6. The `coder_app.opencode` resource registers a dashboard button that proxies to `http://localhost:4096` via a subdomain, with a healthcheck at `/global/health`.
+   - Applies dotfiles via `coder dotfiles <dotfiles_uri> -y`, re-applied on every start.
+   - Installs the `tau-mirror` omp extension (idempotent, non-fatal).
+6. The `coder_script.zellij_web` script (also on start) mints the zellij web token once and daemonizes the zellij web server.
+7. The `coder_app` resources register the dashboard buttons and web-app tiles described above.
 
 ## Customization
 
@@ -117,6 +152,7 @@ Override the `image` parameter in the Coder UI. The image must:
 - Have a writable home directory at `/home/dev`
 - Have `curl` and `sh` for the coder agent installer
 - Include the toolchain expected for the chosen `language` (e.g. `mix`/`hex` for Elixir, `cargo`/`rustup` for Rust)
+- Include `zellij`, `miao`, `miao-server`, `omp`, and `opencode` for the session/mobile workflow above
 
 ### Adding a repo to clone on startup
 
@@ -124,7 +160,7 @@ Set the `repo` parameter in the Coder UI (e.g. `git@github.com:you/repo.git`). T
 
 ### Changing your dotfiles
 
-The `dotfiles_uri` parameter controls which dotfiles repo is applied (mutable, so you can swap it per-workspace). The startup script applies dotfiles once on first boot; to refresh dotfiles after that, use the **Refresh Dotfiles** button in the workspace dashboard (the `coder_app.refresh_dotfiles` resource), which re-runs `coder dotfiles` against the current `dotfiles_uri` value.
+The `dotfiles_uri` parameter controls which dotfiles repo is applied (mutable, so you can swap it per-workspace). The startup script applies dotfiles on every start; to refresh dotfiles without restarting, use the **Refresh Dotfiles** button in the workspace dashboard.
 
 ### Using a private image registry
 
@@ -150,6 +186,10 @@ The PVC might be owned by a different UID from a previous session. The deploymen
 
 For Elixir workspaces, the startup script runs `mix local.hex --force` on first start. If mix is not in the image, the bootstrap will fail. Ensure your `image` includes Elixir/Erlang, or that the auto-computed image for your `language` is reachable.
 
+### Start omp / Start opencode reports it's already running
+
+The buttons are idempotent and exit early when their health endpoint is reachable. If that's wrong (the session is dead but the port is still held), stop the pooled session from the miao dashboard (`x`), or run `miao-server daemon stop` to tear the pool down and start fresh.
+
 ## Languages
 
 The prebuilt image for each `language` value bundles the following toolchain:
@@ -157,4 +197,4 @@ The prebuilt image for each `language` value bundles the following toolchain:
 - **Elixir**: Erlang/OTP, Elixir, mix, hex, inotify-tools
 - **Rust**: rustup, cargo, rustfmt, clippy, rust-analyzer, rust-src, pkg-config, libssl-dev
 
-Both images also include Node.js, Neovim, `zsh` + `oh-my-zsh`, `fzf`, `delta`, `rtk`, and the `opencode` CLI/server.
+Both images also include Node.js, Neovim, zsh, fzf, delta, rtk, zellij, captain-miao (`miao` + `miao-server`), omp, and the opencode CLI.

@@ -25,6 +25,8 @@ ARG ZELLIJ_VERSION
 ARG BUN_VERSION
 # renovate: datasource=github-releases depName=sharkdp/fd extractVersion=^v(?<version>.+)$
 ARG FD_VERSION
+# renovate: datasource=github-releases depName=hyperlogue/captain-miao extractVersion=^v(?<version>.+)$
+ARG MIAO_VERSION
 
 FROM debian:${DEBIAN_VERSION}
 
@@ -42,6 +44,7 @@ ARG OMP_VERSION
 ARG ZELLIJ_VERSION
 ARG BUN_VERSION
 ARG FD_VERSION
+ARG MIAO_VERSION
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -265,4 +268,27 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/omp \
     && omp --version
 
+# Install captain-miao (agent session manager): `miao` (dashboard) and
+# `miao-server` (per-host daemon hosting the libshpool pty pool). The daemon's
+# `launch`/`attach`/`daemon ensure` entrypoints are what the Coder template's
+# Start buttons drive; both binaries are published per-arch in the same release.
+RUN case "${TARGETARCH}" in \
+    amd64) MiaoTriple="x86_64-unknown-linux-gnu" ;; \
+    arm64) MiaoTriple="aarch64-unknown-linux-gnu" ;; \
+    *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/miao-server.tar.gz \
+    "https://github.com/hyperlogue/captain-miao/releases/download/v${MIAO_VERSION}/miao-server-v${MIAO_VERSION}-${MiaoTriple}.tar.gz" \
+    && tar -xzf /tmp/miao-server.tar.gz -C /tmp/ \
+    && mv /tmp/miao-server /usr/local/bin/ \
+    && chmod +x /usr/local/bin/miao-server \
+    && rm -f /tmp/miao-server.tar.gz \
+    && curl -fsSL -o /tmp/miao.tar.gz \
+    "https://github.com/hyperlogue/captain-miao/releases/download/v${MIAO_VERSION}/miao-bundled-all-server-v${MIAO_VERSION}-${MiaoTriple}.tar.gz" \
+    && tar -xzf /tmp/miao.tar.gz -C /tmp/ \
+    && mv "/tmp/miao-bundled-all-server-v${MIAO_VERSION}-${MiaoTriple}/miao" /usr/local/bin/ \
+    && chmod +x /usr/local/bin/miao \
+    && rm -rf /tmp/miao-bundled-all-server-v${MIAO_VERSION}-${MiaoTriple} /tmp/miao.tar.gz
+
 WORKDIR /home/dev/workspace
+

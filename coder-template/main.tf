@@ -206,18 +206,9 @@ resource "coder_agent" "main" {
     # and stdin-closed so any prompt fails fast instead of hanging startup.
     omp install npm:tau-mirror </dev/null 2>/tmp/tau-install.log || true
 
-    # Install captain-miao (miao) — a session manager for coding agents. Used
-    # by the coder_app.start_omp resource to launch omp on demand via
-    # `miao launch pi`, which wraps the agent with tracking hooks. The npm
-    # package downloads a prebuilt native binary; NPM_CONFIG_PREFIX puts it in
-    # ~/.local, so `miao` lands in ~/.local/bin (already on PATH).
-    npm install -g @hyperlogue/captain-miao </dev/null 2>/tmp/miao-install.log || true
-
-    # captain-miao's `pi` backend calls the `pi` binary. omp is a Pi fork that
-    # installs as `omp` and supports the same `-e` extension flag, so symlink
-    # pi -> omp on PATH. miao's tracking hook (loaded via -e) and the tau-mirror
-    # extension (loaded via settings.json) coexist within the same omp process.
-    ln -sf "$(command -v omp)" /home/dev/.local/bin/pi
+    # captain-miao config comes from the dotfiles: the shared config.toml, plus
+    # (in this dev container) pooled mode enabled via install.sh writing
+    # ~/.local/state/captain-miao/dashboard-overrides.json.
   EOT
 }
 
@@ -349,6 +340,16 @@ resource "kubernetes_deployment_v1" "main" {
             value = "true"
           }
 
+          env {
+            name  = "TAU_DISABLED"
+            value = "1"
+          }
+
+          env {
+            name  = "TAU_HOST"
+            value = "127.0.0.1"
+          }
+
           resources {
             requests = {
               cpu    = "1"
@@ -397,6 +398,34 @@ resource "kubernetes_deployment_v1" "main" {
   }
 }
 
+# zellij web server + login token, started once at boot. The web server serves
+# the mobile terminal (proxied via coder_app.zellij_web); login tokens are
+# minted once and stashed on the PVC (zellij displays them only at creation),
+# surfaced by coder_app.zellij_token.
+resource "coder_script" "zellij_web" {
+  agent_id     = coder_agent.main.id
+  display_name = "zellij web"
+  icon         = "/icon/terminal.svg"
+  run_on_start = true
+
+  script = <<-EOT
+    set -e
+    TOKEN_DIR=/home/dev/.local/share/captain-miao
+    mkdir -p "$TOKEN_DIR"
+
+    # Mint the login token once (zellij only shows a token when it is created).
+    if [ ! -s "$TOKEN_DIR/zellij-web.token" ]; then
+      zellij web --create-token --token-name coder > "$TOKEN_DIR/zellij-web.token" 2>/dev/null || true
+      chmod 600 "$TOKEN_DIR/zellij-web.token"
+    fi
+
+    # Daemonize the web server if not already answering.
+    if ! curl -sf http://localhost:8082 >/dev/null 2>&1; then
+      zellij web --ip 127.0.0.1 --port 8082 --daemonize
+    fi
+  EOT
+}
+
 resource "coder_app" "opencode" {
   agent_id     = coder_agent.main.id
   slug         = "opencode"
@@ -413,9 +442,9 @@ resource "coder_app" "opencode" {
   }
 }
 
-# Tau: browser mirror of the omp (Pi) terminal session. The Tau extension's
-# HTTP+WS server on :3001 is started by omp's session_start event — so this
-# app is healthy only while an omp instance launched via start_omp is running.
+# Tau: browser mirror of the omp session. The Tau extension's HTTP+WS server on
+# :3001 is started by the one omp session the Start omp button launches with
+# TAU_DISABLED=0 — so this app is healthy only while that session is running.
 resource "coder_app" "tau" {
   agent_id     = coder_agent.main.id
   slug         = "tau"
@@ -432,20 +461,87 @@ resource "coder_app" "tau" {
   }
 }
 
-# Start omp: opens a terminal in the workspace UI and launches an omp instance
-# via captain-miao (`miao launch pi`). omp starts the Tau extension's HTTP+WS
-# server on :3001, making the Tau app above reachable. The guard checks
-# :3001 first so clicking the button twice doesn't start a second instance.
-# --yolo auto-approves tool calls — Tau's browser UI has no approval surface,
-# so without it the agent deadlocks on the first permission prompt.
+# Start omp: creates a pooled omp session via captain-miao's server-side launcher
+# (`miao-server attach --background --cmd`), then its Tau web mirror binds :3001.
+# Idempotent via the :3001 health guard (exactly one web-enabled omp at a time).
+# TAU_DISABLED=0 overrides the container-wide default so only this session serves
+# Tau; --pool-session omp-web gives it the stable name the dashboard attaches to.
 resource "coder_app" "start_omp" {
   agent_id     = coder_agent.main.id
   slug         = "start-omp"
   display_name = "Start omp"
   icon         = "/icon/react.svg"
-  command      = "if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then echo \"omp is already running — open the Tau app.\"; sleep 5; else miao launch pi /home/dev/workspace --yolo; fi"
+  command      = <<-EOT
+    set -e
+    if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then
+      echo "omp is already running — open the Tau app."
+      sleep 5
+      exit 0
+    fi
+    miao-server daemon ensure >/dev/null
+    miao-server attach omp-web --background --dir /home/dev/workspace \
+      --cmd "sh -lc 'cd /home/dev/workspace && TAU_DISABLED=0 exec miao-server launch omp . --yolo --pool-session omp-web'"
+    echo "omp started — open the Tau app."
+    sleep 5
+  EOT
   share        = "owner"
 }
+
+# Start opencode: launches opencode (TUI + server in one process) inside the
+# miao pty pool, binding its server to loopback :4096. The phone's OpenCode web
+# app and a laptop `opencode attach` both hit that same process and session
+# store, so handoff (and permission approvals) work from either device.
+resource "coder_app" "start_opencode" {
+  agent_id     = coder_agent.main.id
+  slug         = "start-opencode"
+  display_name = "Start opencode"
+  icon         = "/icon/terminal.svg"
+  command      = <<-EOT
+    set -e
+    if curl -sf http://localhost:4096/global/health >/dev/null 2>&1; then
+      echo "opencode is already running — open the OpenCode app."
+      sleep 5
+      exit 0
+    fi
+    miao-server daemon ensure >/dev/null
+    miao-server attach opencode-web --background --dir /home/dev/workspace \
+      --cmd "sh -lc 'cd /home/dev/workspace && exec miao-server launch opencode . --hostname 127.0.0.1 --port 4096 --pool-session opencode-web'"
+    echo "opencode started — open the OpenCode app."
+    sleep 5
+  EOT
+  share        = "owner"
+}
+
+# Zellij web: mobile browser terminal, served by the boot-started zellij web
+# server on loopback :8082. First visit asks for a token (see Zellij token).
+resource "coder_app" "zellij_web" {
+  agent_id     = coder_agent.main.id
+  slug         = "zellij-web"
+  display_name = "Zellij"
+  icon         = "/icon/terminal.svg"
+  url          = "http://localhost:8082"
+  subdomain    = true
+  share        = "owner"
+  open_in      = "tab"
+
+  healthcheck {
+    url       = "http://localhost:8082"
+    interval  = 5
+    threshold = 6
+  }
+}
+
+# Zellij token: shows the login token minted at boot (zellij never re-displays
+# it). Copy it into the Zellij app once per device; it persists ~4 weeks.
+resource "coder_app" "zellij_token" {
+  agent_id     = coder_agent.main.id
+  slug         = "zellij-token"
+  display_name = "Zellij token"
+  icon         = "/icon/terminal.svg"
+  command      = "cat /home/dev/.local/share/captain-miao/zellij-web.token 2>/dev/null || echo 'no token yet — the zellij web boot script mints one next start'"
+  share        = "owner"
+}
+
 
 # Refresh dotfiles: opens a terminal in the workspace UI and re-runs
 # `coder dotfiles` to pull the latest and re-apply.
