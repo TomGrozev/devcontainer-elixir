@@ -199,12 +199,13 @@ resource "coder_agent" "main" {
     GIT_SSH_COMMAND="$GIT_SSH_COMMAND -o StrictHostKeyChecking=accept-new" \
       coder dotfiles "${data.coder_parameter.dotfiles_uri.value}" -y 2>&1 | tee /home/dev/.dotfiles.log || true
 
-    # Install the Tau web-mirror extension for omp (Pi fork). Tau runs as an
-    # omp extension: it starts an HTTP+WS server on :3001 inside the omp
-    # process, mirrored in the browser via the coder_app.tau resource below.
-    # Idempotent (writes to ~/.pi/agent/settings.json on the PVC); non-fatal
-    # and stdin-closed so any prompt fails fast instead of hanging startup.
-    omp install npm:tau-mirror </dev/null 2>/tmp/tau-install.log || true
+    # The ompweb browser UI (kahme247/ompweb) is NOT installed here: it is a
+    # standalone Node server (not an omp extension), run via npx by the Start
+    # ompweb button before its pooled launch (npm cache lives on the PVC, so it
+    # downloads once and stays warm). Remove the legacy
+    # tau-mirror extension from older PVCs so it does not auto-load (non-fatal,
+    # stdin-closed so any prompt fails fast instead of hanging startup).
+    omp plugin uninstall --force tau-mirror </dev/null 2>/tmp/tau-uninstall.log || true
 
     # captain-miao config comes from the dotfiles: the shared config.toml, plus
     # (in this dev container) pooled mode enabled via install.sh writing
@@ -341,13 +342,8 @@ resource "kubernetes_deployment_v1" "main" {
           }
 
           env {
-            name  = "TAU_DISABLED"
-            value = "1"
-          }
-
-          env {
-            name  = "TAU_HOST"
-            value = "127.0.0.1"
+            name  = "ZELLIJ_AUTOATTACH"
+            value = "0"
           }
 
           resources {
@@ -401,7 +397,10 @@ resource "kubernetes_deployment_v1" "main" {
 # zellij web server + login token, started once at boot. The web server serves
 # the mobile terminal (proxied via coder_app.zellij_web); login tokens are
 # minted once and stashed on the PVC (zellij displays them only at creation),
-# surfaced by coder_app.zellij_token.
+# surfaced by coder_app.zellij_token. The script runs under zsh (via zsh -c)
+# so the user's ~/.zshenv is sourced — zsh reads it for every invocation,
+# not just interactive shells — and the daemonized web server (and every
+# session it spawns) inherits the proper omp environment.
 resource "coder_script" "zellij_web" {
   agent_id     = coder_agent.main.id
   display_name = "zellij web"
@@ -410,19 +409,27 @@ resource "coder_script" "zellij_web" {
 
   script = <<-EOT
     set -e
-    TOKEN_DIR=/home/dev/.local/share/captain-miao
-    mkdir -p "$TOKEN_DIR"
 
-    # Mint the login token once (zellij only shows a token when it is created).
-    if [ ! -s "$TOKEN_DIR/zellij-web.token" ]; then
-      zellij web --create-token --token-name coder > "$TOKEN_DIR/zellij-web.token" 2>/dev/null || true
-      chmod 600 "$TOKEN_DIR/zellij-web.token"
-    fi
+    # Run under zsh so ~/.zshenv is sourced (zsh reads it for every
+    # invocation, including -c). The web server daemon — and every session
+    # it spawns — inherits the user's proper omp environment instead of
+    # the coder agent's bare one.
+    zsh -c '
+      set -e
+      TOKEN_DIR=/home/dev/.local/share/captain-miao
+      mkdir -p "$TOKEN_DIR"
 
-    # Daemonize the web server if not already answering.
-    if ! curl -sf http://localhost:8082 >/dev/null 2>&1; then
-      zellij web --ip 127.0.0.1 --port 8082 --daemonize
-    fi
+      # Mint the login token once (zellij only shows a token when it is created).
+      if [ ! -s "$TOKEN_DIR/zellij-web.token" ]; then
+        zellij web --create-token > "$TOKEN_DIR/zellij-web.token" 2>/dev/null || true
+        chmod 600 "$TOKEN_DIR/zellij-web.token"
+      fi
+
+      # Daemonize the web server if not already answering.
+      if ! curl -sf http://localhost:8082 >/dev/null 2>&1; then
+        zellij web --ip 127.0.0.1 --port 8082 --daemonize
+      fi
+    '
   EOT
 }
 
@@ -442,46 +449,52 @@ resource "coder_app" "opencode" {
   }
 }
 
-# Tau: browser mirror of the omp session. The Tau extension's HTTP+WS server on
-# :3001 is started by the one omp session the Start omp button launches with
-# TAU_DISABLED=0 — so this app is healthy only while that session is running.
-resource "coder_app" "tau" {
+# ompweb: browser UI for the omp coding agent. A standalone Node server running
+# in the miao pool on loopback :30177 (started by the Start ompweb button),
+# proxied via subdomain. Healthy only while that pooled session is running.
+resource "coder_app" "ompweb" {
   agent_id     = coder_agent.main.id
-  slug         = "tau"
-  display_name = "Tau"
-  url          = "http://localhost:3001"
+  slug         = "ompweb"
+  display_name = "ompweb"
+  url          = "http://localhost:30177"
   subdomain    = true
   share        = "owner"
   open_in      = "tab"
 
   healthcheck {
-    url       = "http://localhost:3001/api/health"
+    url       = "http://localhost:30177/api/home"
     interval  = 5
     threshold = 6
   }
 }
 
-# Start omp: creates a pooled omp session via captain-miao's server-side launcher
-# (`miao-server attach --background --cmd`), then its Tau web mirror binds :3001.
-# Idempotent via the :3001 health guard (exactly one web-enabled omp at a time).
-# TAU_DISABLED=0 overrides the container-wide default so only this session serves
-# Tau; --pool-session omp-web gives it the stable name the dashboard attaches to.
-resource "coder_app" "start_omp" {
+# Start ompweb: launches the ompweb server (kahme247/ompweb via npx, npm cache
+# on the PVC; -y keeps the non-interactive create prompt-free) as a pooled
+# session via captain-miao's server-side launcher
+# (`miao-server attach --background --cmd`); the UI binds :30177.
+# Idempotent via the :30177 health guard (one ompweb at a time); the pooled
+# session survives client disconnects and is attachable from a miao dashboard.
+# The cmd runs under a zsh login shell because the pool strips the agent's
+# environment: ~/.zshenv then supplies PATH and the devcontainer yolo overlay
+# (PI_CONFIG_FILES), which ompweb's own omp children inherit.
+resource "coder_app" "start_ompweb" {
   agent_id     = coder_agent.main.id
-  slug         = "start-omp"
-  display_name = "Start omp"
+  slug         = "start-ompweb"
+  display_name = "Start ompweb"
   icon         = "/icon/react.svg"
   command      = <<-EOT
     set -e
-    if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then
-      echo "omp is already running — open the Tau app."
+    if curl -sf http://localhost:30177/api/home >/dev/null 2>&1; then
+      echo "ompweb is already running — open the ompweb app."
       sleep 5
       exit 0
     fi
     miao-server daemon ensure >/dev/null
     miao-server attach omp-web --background --dir /home/dev/workspace \
-      --cmd "sh -lc 'cd /home/dev/workspace && TAU_DISABLED=0 exec miao-server launch omp . --yolo --pool-session omp-web'"
-    echo "omp started — open the Tau app."
+      --log-file /tmp/ompweb.log \
+      --cmd "zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 npx -y @kahme247/ompweb --port 30177'"
+    tail -n 5 /tmp/ompweb.log || true
+    echo "ompweb started — open the ompweb app."
     sleep 5
   EOT
   share        = "owner"

@@ -53,13 +53,13 @@ Parameters are configurable from the Coder UI at workspace creation or (for muta
 | Resource                                  | Purpose                                                                                                                                                                                                                                            |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `coder_agent.main`                        | Registers the Coder agent in the workspace. Works in `/home/dev/workspace`.                                                                                                                                                                        |
-| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, sets global git identity if not already configured, marks the workspace as a safe git directory, runs the language-specific `bootstrap.sh` if present, clones a repo if set, applies dotfiles via `coder dotfiles`, and installs the `tau-mirror` omp extension. captain-miao config is dotfiles-owned. |
+| `coder_agent.main.startup_script`         | Inlines first-time setup: creates `/home/dev/{workspace,.local/bin,.local/share,.config,.ssh}`, sets global git identity if not already configured, marks the workspace as a safe git directory, runs the language-specific `bootstrap.sh` if present, clones a repo if set, applies dotfiles via `coder dotfiles`, and removes the legacy `tau-mirror` omp extension from older PVCs. captain-miao config is dotfiles-owned. |
 | `kubernetes_persistent_volume_claim_v1.home` | Persistent `/home/dev` across workspace restarts. Labelled with Coder workspace, user, and resource metadata.                                                                                                                                  |
 | `kubernetes_deployment_v1.main`           | Runs the container rootless (UID/GID 1000, all capabilities dropped, seccomp `RuntimeDefault`), uses `Recreate` strategy, applies pod anti-affinity, and sets CPU/memory requests and limits from the `cpu`/`memory` parameters.                    |
-| `coder_script.zellij_web`                 | On-start script that mints a zellij web login token once (stored on the PVC) and daemonizes `zellij web` on loopback `:8082` for mobile browser access.                                                                                            |
+| `coder_script.zellij_web`                 | On-start script that runs under `zsh` (so `~/.zshenv` is sourced and its environment — the proper omp environment — is inherited by the daemon), then mints a zellij web login token once (stored on the PVC) and daemonizes `zellij web` on loopback `:8082` for mobile browser access.                        |
 | `coder_app.opencode`                      | Proxies the opencode server via subdomain (`http://localhost:4096`). Healthy only while a session started by the Start opencode button is running. Healthcheck at `/global/health`.                                                                 |
-| `coder_app.tau`                           | Proxies the omp Tau web mirror via subdomain (`http://localhost:3001`). Healthy only while the omp session started by the Start omp button is running. Healthcheck at `/api/health`.                                                                |
-| `coder_app.start_omp`                     | Button: launches a pooled omp session via `miao-server attach --background --cmd` with Tau enabled (idempotent — one web-enabled omp at a time).                                                                                                  |
+| `coder_app.ompweb`                        | Proxies the ompweb browser UI for omp via subdomain (`http://localhost:30177`). Healthy only while the ompweb pooled session started by the Start ompweb button is running. Healthcheck at `/api/home`.                                                             |
+| `coder_app.start_ompweb`                  | Button: launches the ompweb server via `npx -y @kahme247/ompweb` (npm cache lives on the PVC, so it downloads once and stays warm) as a pooled session via `miao-server attach --background --cmd` (idempotent — one ompweb at a time). |
 | `coder_app.start_opencode`                | Button: launches opencode (TUI + server in one process) in the miao pool, binding its server to loopback `:4096` (idempotent).                                                                                                                    |
 | `coder_app.zellij_web`                    | Proxies the zellij web terminal via subdomain (`http://localhost:8082`); lands on zellij's session picker. First visit asks for a login token.                                                                                                     |
 | `coder_app.zellij_token`                  | Button: prints the zellij web login token minted at boot (zellij never re-displays it).                                                                                                                                                            |
@@ -73,8 +73,6 @@ The following environment variables are set in the workspace container:
 | ---------------- | ------------------------------ | -------------------------------------------------------------------- |
 | `CODER_AGENT_TOKEN` | `coder_agent.main.token`     | Coder agent authentication (required).                               |
 | `DEVCONTAINER`   | `"true"`                       | Container detection used by dotfiles (e.g. permissive opencode permission tier). |
-| `TAU_DISABLED`   | `"1"`                          | Disables the Tau web mirror by default so only the Start omp button's session binds `:3001`. The button overrides this per-launch with `TAU_DISABLED=0`. |
-| `TAU_HOST`       | `"127.0.0.1"`                  | Binds Tau to loopback (the Coder agent proxies it from inside the pod netns). |
 
 The agent's working directory is `/home/dev/workspace`.
 
@@ -82,7 +80,7 @@ The agent's working directory is `/home/dev/workspace`.
 
 Both coding agents run server-side so a session started from the laptop keeps running when the laptop closes, and is reachable from a phone on the LAN through the Coder dashboard.
 
-- **omp** — the **Start omp** button launches a pooled omp session (owned by captain-miao's daemon, so it survives every client disconnect) and its **Tau** web mirror on `:3001`. Open the **Tau** app on the phone to drive it. **Start opencode** and **OpenCode** are the opencode equivalents.
+- **omp** — the **Start ompweb** button starts the **ompweb** browser UI for the omp agent as a pooled session (owned by captain-miao's daemon, so it survives every client disconnect) on `:30177`. ompweb drives its own `omp` child processes per active session, so no separate omp launch is needed; the omp yolo overlay from the dotfiles still applies to those children. Open the **ompweb** app to browse sessions and drive new ones. **Start opencode** and **OpenCode** are the opencode equivalents.
 - **opencode** — the **Start opencode** button runs `opencode` with `--hostname 127.0.0.1 --port 4096` inside the pool, so the **OpenCode** web app and a laptop `opencode attach http://localhost:4096` both talk to the same session store and can hand off mid-task (including permission approvals).
 - **Zellij (terminal)** — the **Zellij** app is a full mobile terminal served by zellij web on `:8082`. On first visit, copy the token from the **Zellij token** button (one paste per device, remembered for ~4 weeks).
 
@@ -130,8 +128,7 @@ The `miao` and `miao-server` binaries ship in the image (pinned in `docker-bake.
    - Runs the language-specific `bootstrap.sh` from `/usr/local/share/devcontainer/` if present.
    - Clones the `repo` parameter into `/home/dev/workspace` if set and not already a git repo.
    - Applies dotfiles via `coder dotfiles <dotfiles_uri> -y`, re-applied on every start.
-   - Installs the `tau-mirror` omp extension (idempotent, non-fatal).
-6. The `coder_script.zellij_web` script (also on start) mints the zellij web token once and daemonizes the zellij web server.
+6. The `coder_script.zellij_web` script (also on start) mints the zellij web token once and daemonizes the zellij web server — wrapped in `zsh -c` so `~/.zshenv` is sourced and the daemon (and every session it spawns) runs with the user's proper omp environment.
 7. The `coder_app` resources register the dashboard buttons and web-app tiles described above.
 
 ## Customization
@@ -186,7 +183,7 @@ The PVC might be owned by a different UID from a previous session. The deploymen
 
 For Elixir workspaces, the startup script runs `mix local.hex --force` on first start. If mix is not in the image, the bootstrap will fail. Ensure your `image` includes Elixir/Erlang, or that the auto-computed image for your `language` is reachable.
 
-### Start omp / Start opencode reports it's already running
+### Start ompweb / Start opencode reports it's already running
 
 The buttons are idempotent and exit early when their health endpoint is reachable. If that's wrong (the session is dead but the port is still held), stop the pooled session from the miao dashboard (`x`), or run `miao-server daemon stop` to tear the pool down and start fresh.
 
