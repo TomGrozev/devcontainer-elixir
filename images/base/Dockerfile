@@ -293,8 +293,10 @@ RUN case "${TARGETARCH}" in \
 # omp-web-omp-bin: OMP_WEB_OMP_BIN target routing ompweb's spawned omp
 # sessions through captain-miao's agent launcher (`miao launch omp`) instead
 # of the bare omp binary. See shared/omp-web-omp-bin.sh for the full rationale.
-COPY shared/omp-web-omp-bin.sh /usr/local/bin/omp-web-omp-bin
-RUN chmod +x /usr/local/bin/omp-web-omp-bin
+# --chown/--chmod are required here: COPY always lands as root regardless of
+# the active USER, and this runs under USER dev (unlike the su/sudo wrapper
+# COPYs above, which are still under USER root and chmod via a follow-up RUN).
+COPY --chown=dev:dev --chmod=755 shared/omp-web-omp-bin.sh /usr/local/bin/omp-web-omp-bin
 
 WORKDIR /home/dev/workspace
 
