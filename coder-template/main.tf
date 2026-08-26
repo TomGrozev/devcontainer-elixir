@@ -477,6 +477,17 @@ resource "coder_app" "ompweb" {
 # The cmd runs under a zsh login shell because the pool strips the agent's
 # environment: ~/.zshenv then supplies PATH and the devcontainer yolo overlay
 # (PI_CONFIG_FILES), which ompweb's own omp children inherit.
+#
+# `miao-server attach` here is only the generic pty-pool background-process
+# primitive (the same one opencode-web uses below) keeping the Next.js server
+# itself alive across disconnects — it is not captain-miao's agent tracking.
+# The agent tracking instead targets OMP_WEB_OMP_BIN: ompweb resolves that
+# env var and spawns it directly (pipe stdio, `--mode rpc-ui --cwd <dir> ...`)
+# for every chat session it opens. Pointing it at shared/omp-web-omp-bin.sh
+# (installed to /usr/local/bin/omp-web-omp-bin) hands that same argv to `miao
+# launch omp` — captain-miao's actual agent launcher — instead of the bare
+# `omp` binary, so each session gets hooks and shows up in the miao dashboard
+# instead of running as an invisible child process.
 resource "coder_app" "start_ompweb" {
   agent_id     = coder_agent.main.id
   slug         = "start-ompweb"
@@ -492,7 +503,7 @@ resource "coder_app" "start_ompweb" {
     miao-server daemon ensure >/dev/null
     miao-server attach omp-web --background --dir /home/dev/workspace \
       --log-file /tmp/ompweb.log \
-      --cmd "zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 npx -y @kahme247/ompweb --port 30177'"
+      --cmd "zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 OMP_WEB_OMP_BIN=/usr/local/bin/omp-web-omp-bin npx -y @kahme247/ompweb --port 30177'"
     tail -n 5 /tmp/ompweb.log || true
     echo "ompweb started — open the ompweb app."
     sleep 5

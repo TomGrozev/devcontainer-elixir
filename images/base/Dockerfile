@@ -290,5 +290,11 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/miao \
     && rm -rf /tmp/miao-bundled-all-server-v${MIAO_VERSION}-${MiaoTriple} /tmp/miao.tar.gz
 
+# omp-web-omp-bin: OMP_WEB_OMP_BIN target routing ompweb's spawned omp
+# sessions through captain-miao's agent launcher (`miao launch omp`) instead
+# of the bare omp binary. See shared/omp-web-omp-bin.sh for the full rationale.
+COPY shared/omp-web-omp-bin.sh /usr/local/bin/omp-web-omp-bin
+RUN chmod +x /usr/local/bin/omp-web-omp-bin
+
 WORKDIR /home/dev/workspace
 
