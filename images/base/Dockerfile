@@ -290,9 +290,11 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/miao \
     && rm -rf /tmp/miao-bundled-all-server-v${MIAO_VERSION}-${MiaoTriple} /tmp/miao.tar.gz
 
-# omp-web-omp-bin: OMP_WEB_OMP_BIN target routing ompweb's spawned omp
-# sessions through captain-miao's agent launcher (`miao launch omp`) instead
-# of the bare omp binary. See shared/omp-web-omp-bin.sh for the full rationale.
+# omp-web-omp-bin: OMP_WEB_OMP_BIN target. ompweb resolves this single binary
+# for both its interactive chat-session spawns and its one-shot omp CLI calls
+# (version check, update, plugins, etc); the wrapper routes only the former
+# through captain-miao's agent launcher (`miao launch omp`) and passes the
+# latter straight to the real omp binary. See shared/omp-web-omp-bin.sh.
 # --chown/--chmod are required here: COPY always lands as root regardless of
 # the active USER, and this runs under USER dev (unlike the su/sudo wrapper
 # COPYs above, which are still under USER root and chmod via a follow-up RUN).

@@ -1,28 +1,33 @@
 #!/bin/sh
-# omp-web-omp-bin: OMP_WEB_OMP_BIN target for ompweb's RPC-mode agent spawns.
+# omp-web-omp-bin: OMP_WEB_OMP_BIN target, resolved by ompweb for EVERY omp
+# binary invocation it makes \u2014 not just chat sessions. ompweb's resolveOmpBin()
+# is a single shared helper backing two structurally different call shapes:
 #
-# ompweb (@kahme247/ompweb) resolves this path via OMP_WEB_OMP_BIN and spawns
-# it directly, with pipe stdio, once per chat session it opens:
-#   spawn(OMP_WEB_OMP_BIN, ["--mode", "rpc-ui", "--cwd", <dir>, ...extraArgs])
+#   1. Interactive chat sessions (RPC mode), spawned with pipe stdio:
+#        spawn(bin, ["--mode", "rpc-ui", "--cwd", <dir>, ...extraArgs])
+#   2. One-shot CLI calls, shelled out to directly for UI features:
+#        execFile(bin, ["--version"])
+#        execFile(bin, ["update", "--check"])
+#        execFile(bin, ["plugin", "list", "--json", ...])
+#        execFile(bin, ["agents", "unpack", "--dir", ..., "--json"])
+#        execFile(bin, ["--export", <in>, <out>])
 #
-# Rather than exec the bare `omp` binary, hand that same argv to `miao launch
-# omp` — captain-miao's agent launcher. It strips its own `--pool-session`
-# flag, prepends `-e <generated-hook-extension>`, and execs omp with the rest
-# untouched, so every session ompweb opens becomes a hooked, dashboard-visible
-# row instead of an invisible child process.
+# Only (1) should go through captain-miao's agent launcher (`miao launch
+# omp`) so the chat session gets hooks and shows up in the dashboard instead
+# of running as an invisible child process. (2) MUST reach the real omp
+# binary untouched: captain-miao's `split_cwd` treats a first positional that
+# doesn't start with `-` as a *working directory* to canonicalize, not an omp
+# subcommand \u2014 so routing e.g. `update --check` through `miao launch` reads
+# "update" as a target directory (which doesn't exist) and the launch fails.
+# That failure is exactly what surfaces as "omp not found in PATH": once
+# routed through the launcher, ompweb's RPC-mode client relays the failed
+# child's stderr straight into its own UI, so a captain-miao-side failure
+# shows up inside ompweb too.
 #
-# `--pool-session` is captain-miao's own flag here, not a real pooled-session
-# name. It does two things, both load-bearing for this headless, terminal-less
-# invocation:
-#   - it exempts the launch from captain-miao's "must run inside a supported
-#     terminal (Kitty or zellij)" check, which would otherwise reject this
-#     (main.rs's requires_terminal());
-#   - as a name with no registered pool daemon, it makes the launcher's
-#     daemon-liveness watch (wait_until_minting_daemon_gone) resolve to "wait
-#     forever" instead of finding nothing and killing the session immediately.
-#
-# The launcher inherits its own stdio verbatim (plain fd passthrough, no PTY
-# allocated) and execs omp with it, so the RPC framing ompweb speaks over
-# stdin/stdout reaches omp untouched. Hook events travel over a separate Unix
-# socket entirely, so they never interleave with that stream.
-exec miao launch omp --pool-session ompweb "$@"
+# ompweb only ever constructs the RPC shape as exactly `--mode rpc-ui ...`,
+# so checking the first argument is a precise, non-overlapping discriminator
+# between the two shapes.
+if [ "$1" = "--mode" ]; then
+  exec miao launch omp --pool-session ompweb "$@"
+fi
+exec omp "$@"
