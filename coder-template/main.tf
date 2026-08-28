@@ -201,7 +201,7 @@ resource "coder_agent" "main" {
 
     # The ompweb browser UI (kahme247/ompweb) is NOT installed here: it is a
     # standalone Node server (not an omp extension), run via npx by the Start
-    # ompweb button before its pooled launch (npm cache lives on the PVC, so it
+    # ompweb button as a plain daemon (npm cache lives on the PVC, so it
     # downloads once and stays warm). Remove the legacy
     # tau-mirror extension from older PVCs so it does not auto-load (non-fatal,
     # stdin-closed so any prompt fails fast instead of hanging startup).
@@ -450,8 +450,9 @@ resource "coder_app" "opencode" {
 }
 
 # ompweb: browser UI for the omp coding agent. A standalone Node server running
-# in the miao pool on loopback :30177 (started by the Start ompweb button),
-# proxied via subdomain. Healthy only while that pooled session is running.
+# on loopback :30177 (started by the Start ompweb button as a plain daemon, not
+# a miao pooled session), proxied via subdomain. Healthy only while that daemon
+# is running.
 resource "coder_app" "ompweb" {
   agent_id     = coder_agent.main.id
   slug         = "ompweb"
@@ -469,25 +470,28 @@ resource "coder_app" "ompweb" {
 }
 
 # Start ompweb: launches the ompweb server (kahme247/ompweb via npx, npm cache
-# on the PVC; -y keeps the non-interactive create prompt-free) as a pooled
-# session via captain-miao's server-side launcher
-# (`miao-server attach --background --cmd`); the UI binds :30177.
-# Idempotent via the :30177 health guard (one ompweb at a time); the pooled
-# session survives client disconnects and is attachable from a miao dashboard.
-# The cmd runs under a zsh login shell because the pool strips the agent's
-# environment: ~/.zshenv then supplies PATH and the devcontainer yolo overlay
-# (PI_CONFIG_FILES), which ompweb's own omp children inherit.
+# on the PVC; -y keeps the non-interactive create prompt-free) as a standalone
+# daemon (not a captain-miao pooled session — the Node HTTP server is not a pty
+# session, so it does not belong in the pool); the UI binds :30177.
+# Idempotent via the :30177 health guard (one ompweb at a time). The daemon runs
+# under a zsh login shell so ~/.zshenv supplies PATH and the devcontainer yolo
+# overlay (PI_CONFIG_FILES), which ompweb's own omp children inherit.
 #
-# `miao-server attach` here is only the generic pty-pool background-process
-# primitive (the same one opencode-web uses below) keeping the Next.js server
-# itself alive across disconnects — it is not captain-miao's agent tracking.
-# The agent tracking instead targets OMP_WEB_OMP_BIN: ompweb resolves that
-# env var and spawns it directly (pipe stdio, `--mode rpc-ui --cwd <dir> ...`)
-# for every chat session it opens. Pointing it at shared/omp-web-omp-bin.sh
-# (installed to /usr/local/bin/omp-web-omp-bin) hands that same argv to `miao
-# launch omp` — captain-miao's actual agent launcher — instead of the bare
-# `omp` binary, so each session gets hooks and shows up in the miao dashboard
-# instead of running as an invisible child process.
+# miao is still involved for what it is for: the agents, not the UI. ompweb
+# resolves OMP_WEB_OMP_BIN to shared/omp-web-omp-bin.sh (installed to
+# /usr/local/bin/omp-web-omp-bin) and spawns it for every omp invocation.
+# That shim hands each interactive chat session's argv (`--mode rpc-ui ...`)
+# to `miao launch omp --launch-id omp-web-<pid>` — captain-miao's actual agent
+# launcher — instead of the bare `omp` binary, so every session gets hooks and
+# shows up in the miao dashboard instead of running as an invisible child
+# process. `--launch-id` and NOT `--pool-session`: these omp children are
+# ompweb's own pipe-stdio children, not pool members, and a `pool_session` marks
+# them for the daemon's startup reaper (miao v0.7.0
+# `reap_previous_pool_launchers`), which would SIGTERM every live chat session on
+# any daemon restart. See shared/omp-web-omp-bin.sh. One-shot CLI calls
+# (`--version`, `update --check`, ...) pass straight through to the real omp.
+# `miao-server daemon ensure` is here for the dashboard and the opencode-web pool
+# session below, not for these omp children, which need no pool.
 resource "coder_app" "start_ompweb" {
   agent_id     = coder_agent.main.id
   slug         = "start-ompweb"
@@ -501,11 +505,21 @@ resource "coder_app" "start_ompweb" {
       exit 0
     fi
     miao-server daemon ensure >/dev/null
-    miao-server attach omp-web --background --dir /home/dev/workspace \
-      --log-file /tmp/ompweb.log \
-      --cmd "zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 OMP_WEB_OMP_BIN=/usr/local/bin/omp-web-omp-bin npx -y @kahme247/ompweb --port 30177'"
+    # Daemonize ompweb standalone (setsid detaches it from this command's
+    # session so it survives the button returning; nohup guards SIGHUP).
+    # OMP_WEB_OMP_BIN routes its omp children through captain-miao.
+    setsid nohup zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 OMP_WEB_OMP_BIN=/usr/local/bin/omp-web-omp-bin npx -y @kahme247/ompweb --port 30177' >/tmp/ompweb.log 2>&1 </dev/null &
+    i=0
+    while [ "$i" -lt 30 ] && ! curl -sf http://localhost:30177/api/home >/dev/null 2>&1; do
+      i=$((i+1))
+      sleep 2
+    done
     tail -n 5 /tmp/ompweb.log || true
-    echo "ompweb started — open the ompweb app."
+    if curl -sf http://localhost:30177/api/home >/dev/null 2>&1; then
+      echo "ompweb started — open the ompweb app."
+    else
+      echo "ompweb failed to start — see /tmp/ompweb.log"
+    fi
     sleep 5
   EOT
   share        = "owner"

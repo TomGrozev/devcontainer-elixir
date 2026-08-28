@@ -1,42 +1,37 @@
 #!/bin/sh
-# omp-web-omp-bin: OMP_WEB_OMP_BIN target, resolved by ompweb for EVERY omp
-# binary invocation it makes -- not just chat sessions. ompweb's resolveOmpBin()
-# is a single shared helper backing two structurally different call shapes:
+# omp-web-omp-bin: OMP_WEB_OMP_BIN target. ompweb resolves this one binary for
+# EVERY omp invocation it makes, in two structurally different shapes:
 #
-#   1. Interactive chat sessions (RPC mode), spawned with pipe stdio:
-#        spawn(bin, ["--mode", "rpc-ui", "--cwd", <dir>, ...extraArgs])
-#   2. One-shot CLI calls, shelled out to directly for UI features:
-#        execFile(bin, ["--version"])
-#        execFile(bin, ["update", "--check"])
-#        execFile(bin, ["plugin", "list", "--json", ...])
-#        execFile(bin, ["agents", "unpack", "--dir", ..., "--json"])
-#        execFile(bin, ["--export", <in>, <out>])
+#   1. Interactive chat sessions:  spawn(bin, ["--mode", "rpc-ui", "--cwd", …])
+#   2. One-shot CLI calls:         execFile(bin, ["update", "--check"]), etc.
 #
-# Only (1) should go through captain-miao's agent launcher (`miao launch
-# omp`) so the chat session gets hooks and shows up in the dashboard instead
-# of running as an invisible child process. (2) MUST reach the real omp
-# binary untouched: captain-miao's `split_cwd` treats a first positional that
-# doesn't start with `-` as a *working directory* to canonicalize, not an omp
-# subcommand -- so routing e.g. `update --check` through `miao launch` reads
-# "update" as a target directory (which doesn't exist) and the launch fails.
+# Only (1) goes through captain-miao's launcher, so the session gets hooks and a
+# dashboard row instead of being an invisible child. (2) MUST reach the real omp
+# untouched: miao's `split_cwd` reads a leading non-`-` positional as a working
+# directory, so `miao launch omp update --check` looks for a dir named "update"
+# and fails. ompweb builds the RPC shape as exactly `--mode rpc-ui …`, so `$1`
+# discriminates the two exactly.
 #
-# ompweb only ever constructs the RPC shape as exactly `--mode rpc-ui ...`,
-# so checking the first argument is a precise, non-overlapping discriminator
-# between the two shapes.
+# `--launch-id`, not `--pool-session`. These children are spawned by ompweb with
+# pipe stdio, so they are NOT in miao-server's pty pool. Claiming otherwise gets
+# them killed: `pool_session` is how the daemon identifies pool members, and at
+# startup `reap_previous_pool_launchers()` SIGTERMs every launcher carrying one,
+# on the assumption it is a leftover from a previous incarnation — and the
+# launcher's SIGTERM handler kills its agent (miao v0.7.0,
+# cm-server/src/server.rs + cm-core/src/launcher.rs). So any daemon (re)start —
+# `daemon ensure` after a crash, a stop, or the 300s idle exit — would wipe every
+# live ompweb chat session. A fixed name compounded it: name resolution is
+# first-match, so an attach report for one session could signal a sibling.
+# Either flag equally suppresses the launcher's window self-report, which is what
+# a headless child wants, so `--launch-id` gives that up for nothing.
 #
-# Both branches exec /usr/local/bin/<bin> by absolute path rather than a bare
-# name: ompweb runs this wrapper inside captain-miao's pty pool, whose
-# background --cmd children get a minimal PATH that omits /usr/local/bin, and
-# an absolute path also can't be shadowed by an earlier PATH entry (e.g. a
-# stray personal ~/.local/bin/miao).
-#
-# The RPC branch additionally needs /usr/local/bin ON PATH, not just as our
-# own exec target: once handed off, captain-miao's own agent_command() does
-# its own unconditional `find_in_path("omp")` internally (crates/cm-core/src
-# /agents/common.rs) with no env var or flag to override it, so miao itself
-# must be able to see /usr/local/bin to find the omp binary it launches.
+# Absolute /usr/local/bin paths: this wrapper runs inside a pool `--cmd` child,
+# whose minimal PATH omits /usr/local/bin, and an absolute path can't be
+# shadowed by a stray earlier entry. The RPC branch additionally needs it ON
+# PATH, because once handed off miao's own agent_command() does an
+# unconditional, unoverridable `find_in_path("omp")` (cm-core/src/agents/common.rs).
 if [ "$1" = "--mode" ]; then
   export PATH="/usr/local/bin:$PATH"
-  exec /usr/local/bin/miao launch omp --pool-session ompweb "$@"
+  exec /usr/local/bin/miao launch omp --launch-id "omp-web-$$" "$@"
 fi
 exec /usr/local/bin/omp "$@"
