@@ -433,6 +433,34 @@ resource "coder_script" "zellij_web" {
   EOT
 }
 
+# ompweb: browser UI for the omp coding agent (kahme247/ompweb via npx; npm
+# cache lives on the PVC so it downloads once and stays warm). Started once at
+# boot as a standalone Node daemon on loopback :30177 (a plain HTTP server, not
+# a pty session, so it does not belong in the miao pool), proxied via
+# coder_app.ompweb. Runs under a zsh login shell so ~/.zshenv supplies PATH and
+# the devcontainer yolo overlay (PI_CONFIG_FILES), which ompweb's omp children
+# inherit. ompweb spawns omp directly (plain `omp` on PATH) — its chat sessions
+# are ompweb's own children, not captain-miao launches. The :30177 health guard
+# keeps it idempotent (one ompweb at a time).
+resource "coder_script" "ompweb" {
+  agent_id     = coder_agent.main.id
+  display_name = "ompweb"
+  icon         = "/icon/code.svg"
+  run_on_start = true
+
+  script = <<-EOT
+    set -e
+    if curl -sf http://localhost:30177/api/home >/dev/null 2>&1; then
+      echo "ompweb is already running"
+      exit 0
+    fi
+    # setsid detaches the daemon from this script's session so it survives the
+    # script returning; nohup guards SIGHUP. OMP_WEB_NO_OPEN keeps ompweb from
+    # trying to open a browser.
+    setsid nohup zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 npx -y @kahme247/ompweb --port 30177' >/tmp/ompweb.log 2>&1 </dev/null &
+  EOT
+}
+
 resource "coder_app" "opencode" {
   agent_id     = coder_agent.main.id
   slug         = "opencode"
@@ -450,13 +478,14 @@ resource "coder_app" "opencode" {
 }
 
 # ompweb: browser UI for the omp coding agent. A standalone Node server running
-# on loopback :30177 (started by the Start ompweb button as a plain daemon, not
-# a miao pooled session), proxied via subdomain. Healthy only while that daemon
-# is running.
+# on loopback :30177 (started at boot by coder_script.ompweb as a plain daemon,
+# not a miao pooled session), proxied via subdomain. Healthy only while that
+# daemon is running.
 resource "coder_app" "ompweb" {
   agent_id     = coder_agent.main.id
   slug         = "ompweb"
   display_name = "ompweb"
+  icon         = "/icon/code.svg"
   url          = "http://localhost:30177"
   subdomain    = true
   share        = "owner"
@@ -469,46 +498,26 @@ resource "coder_app" "ompweb" {
   }
 }
 
-# Start ompweb: launches the ompweb server (kahme247/ompweb via npx, npm cache
-# on the PVC; -y keeps the non-interactive create prompt-free) as a standalone
-# daemon (not a captain-miao pooled session — the Node HTTP server is not a pty
-# session, so it does not belong in the pool); the UI binds :30177.
-# Idempotent via the :30177 health guard (one ompweb at a time). The daemon runs
-# under a zsh login shell so ~/.zshenv supplies PATH and the devcontainer yolo
-# overlay (PI_CONFIG_FILES), which ompweb's own omp children inherit.
-#
-# miao is still involved for what it is for: the agents, not the UI. ompweb
-# resolves OMP_WEB_OMP_BIN to shared/omp-web-omp-bin.sh (installed to
-# /usr/local/bin/omp-web-omp-bin) and spawns it for every omp invocation.
-# That shim hands each interactive chat session's argv (`--mode rpc-ui ...`)
-# to `miao launch omp --launch-id omp-web-<pid>` — captain-miao's actual agent
-# launcher — instead of the bare `omp` binary, so every session gets hooks and
-# shows up in the miao dashboard instead of running as an invisible child
-# process. `--launch-id` and NOT `--pool-session`: these omp children are
-# ompweb's own pipe-stdio children, not pool members, and a `pool_session` marks
-# them for the daemon's startup reaper (miao v0.7.0
-# `reap_previous_pool_launchers`), which would SIGTERM every live chat session on
-# any daemon restart. See shared/omp-web-omp-bin.sh. One-shot CLI calls
-# (`--version`, `update --check`, ...) pass straight through to the real omp.
-# `miao-server daemon ensure` is here for the dashboard and the opencode-web pool
-# session below, not for these omp children, which need no pool.
-resource "coder_app" "start_ompweb" {
+# Restart ompweb: kills the running ompweb daemon (if any) and starts a fresh
+# one on :30177. ompweb normally comes up at boot (coder_script.ompweb); this
+# button is for picking up a new version or recovering a wedged process. Same
+# standalone daemon as the boot script — a plain Node server that spawns omp
+# directly, with no captain-miao involvement.
+resource "coder_app" "restart_ompweb" {
   agent_id     = coder_agent.main.id
-  slug         = "start-ompweb"
-  display_name = "Start ompweb"
-  icon         = "/icon/react.svg"
+  slug         = "restart-ompweb"
+  display_name = "Restart ompweb"
+  icon         = "/icon/code.svg"
   command      = <<-EOT
     set -e
-    if curl -sf http://localhost:30177/api/home >/dev/null 2>&1; then
-      echo "ompweb is already running — open the ompweb app."
-      sleep 5
-      exit 0
-    fi
-    miao-server daemon ensure >/dev/null
-    # Daemonize ompweb standalone (setsid detaches it from this command's
-    # session so it survives the button returning; nohup guards SIGHUP).
-    # OMP_WEB_OMP_BIN routes its omp children through captain-miao.
-    setsid nohup zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 OMP_WEB_OMP_BIN=/usr/local/bin/omp-web-omp-bin npx -y @kahme247/ompweb --port 30177' >/tmp/ompweb.log 2>&1 </dev/null &
+    pkill -f '@kahme247/ompweb' 2>/dev/null || true
+    # Wait for the port to free before relaunching.
+    i=0
+    while [ "$i" -lt 10 ] && curl -sf http://localhost:30177/api/home >/dev/null 2>&1; do
+      i=$((i+1))
+      sleep 1
+    done
+    setsid nohup zsh -lc 'cd /home/dev/workspace && exec env OMP_WEB_NO_OPEN=1 npx -y @kahme247/ompweb --port 30177' >/tmp/ompweb.log 2>&1 </dev/null &
     i=0
     while [ "$i" -lt 30 ] && ! curl -sf http://localhost:30177/api/home >/dev/null 2>&1; do
       i=$((i+1))
@@ -516,7 +525,7 @@ resource "coder_app" "start_ompweb" {
     done
     tail -n 5 /tmp/ompweb.log || true
     if curl -sf http://localhost:30177/api/home >/dev/null 2>&1; then
-      echo "ompweb started — open the ompweb app."
+      echo "ompweb restarted — open the ompweb app."
     else
       echo "ompweb failed to start — see /tmp/ompweb.log"
     fi
