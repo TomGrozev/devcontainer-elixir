@@ -75,7 +75,7 @@ variable "MIAO_VERSION" {
 }
 // renovate: datasource=rust-version depName=rust
 variable "RUST_VERSION" {
-  default = "1.98.0"
+  default = "1.98.1"
 }
 
 // ── Target groups ──────────────────────────────────────────────────────────
