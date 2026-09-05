@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   release:
@@ -23,7 +24,16 @@ jobs:
         id: changes
         run: |
           set -euo pipefail
-          last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+          # Highest v<maj>.<min>.<pat> tag on the remote. Release tags point at
+          # bot commits pushed via the tag alone, so they are not ancestors of
+          # HEAD and git describe misses the latest one -- which made the bump
+          # collide with an existing tag (fatal: tag 'v0.8.0' already exists).
+          last_tag="$(git ls-remote --tags origin 'v[0-9]*.*.*' \
+            | awk -F/ '{print $NF}' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -t. -k1,1n -k2,2n -k3,3n \
+            | tail -1)" || true
+          last_tag="${last_tag:-}"
           if [[ -z "$last_tag" ]]; then
             echo "No existing tags; will cut an initial release."
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
@@ -91,6 +101,13 @@ jobs:
             min=$(( ${min:-0} + 1 ))
             new_tag="v${maj}.${min}.0"
           fi
+
+          # Refuse to re-create a tag that exists on the remote but was not seen
+          # as last_tag (defends against semver-sorting blind spots).
+          if git ls-remote --exit-code --tags origin "refs/tags/${new_tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${new_tag} already exists on the remote but is not the detected last_tag. Clean up the remote tag (it is not part of any release) and cut a manual tag instead."
+            exit 1
+          fi
           echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
           echo "New release tag: $new_tag"
 
@@ -116,14 +133,46 @@ jobs:
 
           git tag -a "$new_tag" -m "Automated release $new_tag"
           git push origin "$new_tag" --follow-tags
+
+          # Build is NOT invoked here as a step-level reusable workflow call —
+          # GitHub only resolves those at job level; at step level the call fails
+          # with "Can't find 'action.yml'/'Dockerfile'" (the Aug 24, 2026 failure).
+          # The tag push itself triggers build.yml via on: push: tags.
+          #
+          # Sync the version table back to master via PR: protected master requires
+          # a signed commit and the smoke check, which GITHUB_TOKEN pushes cannot
+          # satisfy; a direct bot push would fail every run. The PR branch is reset
+          # onto current master every run (force-with-lease; branch is bot-owned)
+          # so it never diverges, and the PR is only touched when there is a delta.
+          # README sync must never fail the release: tag and build already went
+          # out above, so a sync problem surfaces as a warning only.
+          (
+            pr_branch="docs/release-versions"
+            # Populate the remote-tracking ref when the branch exists, so
+            # force-with-lease below has a lease to check against.
+            git fetch origin "refs/heads/${pr_branch}:refs/remotes/origin/${pr_branch}" 2>/dev/null || true
+            git checkout -B "${pr_branch}" origin/master
+            git checkout master -- README.md
+            if [[ -n "$(git status --porcelain -- README.md)" ]]; then
+              git add README.md
+              git commit -m "docs: sync release version table (post-${new_tag})"
+              if git ls-remote --exit-code --heads origin "refs/heads/${pr_branch}" >/dev/null 2>&1; then
+                git push --force-with-lease origin "HEAD:${pr_branch}"
+              else
+                # First creation: nothing to clobber, plain push.
+                git push origin "HEAD:refs/heads/${pr_branch}"
+              fi
+              gh pr create --base master --head "${pr_branch}" \
+                --title "docs: sync release version table" \
+                --body "Automated README version-table sync after cutting ${new_tag}." \
+                || gh pr edit "${pr_branch}" \
+                     --body "Automated README version-table sync after cutting ${new_tag}. (PR already open.)"
+            else
+              echo "README already in sync on ${pr_branch}"
+            fi
+          ) || echo "::warning::README version-table sync to master failed; the ${new_tag} release and build are unaffected."
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Build and push image
-        if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '0'
-        uses: ./.github/workflows/build.yml
-        with:
-          release_tag: ${{ steps.bump.outputs.tag }}
 
       - name: Skip notice (major present)
         if: steps.changes.outputs.has_changes == 'true' && steps.major.outputs.has_major == '1'
